@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}Rebalance {{user.name}} Accounts{% endblock %}
+
+{% block body %}
+<h1 class="centered">Rebalance {{user.name}} Accounts
+with {{adj_pct|percent(0)}} adjustment in plan.
+</h1>
+
+<form method="POST" action="{{ url('rebalance', user.id, adj_pct) }}">
+{{ csrf_input }}
+<table>
+<tr>
+  <th rowspan="2"></th>
+  <th class="right">Account</th>
+  {% for acct in accts %}
+  <th colspan="3">{{acct.name}}</th>
+  {% endfor %}
+</tr>
+<tr>
+  <th class="right">Balance</th>
+  {% for acct in accts %}
+    <th colspan="3">
+      <input type="number" name="balance_{{acct.id}}" step="any"
+             value="{{balances[acct.id]|roundto(0, False)}}">
+    </th>
+  {% endfor %}
+</tr>
+<tr>
+  <th>Ticker</th>
+  <th>Share Price</th>
+  {% for acct in accts %}
+    <th>Current Balance</th>
+    <th>Plan</th>
+    <th>Change in Shares</th>
+  {% endfor %}
+</tr>
+{% for ticker, share_price, acct_cats in ticker_rows %}
+<tr>
+  <td>{{ticker}}</td>
+  <td><input type="number" name="{{ticker}}" step="any"
+             value="{{share_price|roundto(3)}}"></td>
+  {% for cat in acct_cats %}
+    <td class="right">{{cat.balance|dollars(0)}}</td>
+    <td class="right">{{cat.adj_plan_balance|dollars(0)}}</td>
+    <td class="right">{{cat.change_in_shares|roundto(0)}}</td>
+  {% endfor %}
+</tr>
+{% endfor %}
+<tr>
+<td>Totals</td>
+<td></td>
+{% for balance, current, plan in totals %}
+{% if abs(balance - current) > 0.5 %}
+<td class="right error">
+{% else %}
+<td class="right">
+{% endif %}
+{{current|dollars(0)}}</td>
+{% if abs(balance - plan) > 0.5 %}
+<td class="error">
+{% else %}
+<td>
+{% endif %}
+{{plan|dollars(0)}}</td>
+<td></td>
+{% endfor %}
+</tr>
+</table>
+<input type="submit" value="Recalculate">
+</form>
+<form method="POST" action="{{ url("rebalanced", user.id) }}">
+{{ csrf_input }}
+<input type="submit" value="Record Date">
+</form>
+{% endblock %}

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block body %}
+<h1>{{account}} on {{date}}</h1>
+
+<h3>Balance {{balance|dollars}}</h3>
+
+<table>
+<tr>
+  <th>Fund</th>
+  <th>Shares</th>
+  <th>Share Price</th>
+  <th>Balance</th>
+  <th>Pct of Peak</th>
+  <th>Peak Date</th>
+  <th>Pct of Trough</th>
+  <th>Trough Date</th>
+</tr>
+{% for ticker, account_share in shares_by_ticker %}
+<tr>
+  <td>{{ticker}}</td>
+  <td>{{account_share.shares}}</td>
+  <td>{{account_share.share_price|dollars(4)}}</td>
+  <td>{{account_share.balance|dollars}}</td>
+  <td>{{account_share.pct_of_peak|percent(none_value='')}}</td>
+  <td>{{account_share.peak_date|blank}}</td>
+  <td>{{account_share.pct_of_trough|percent(none_value='')}}</td>
+  <td>{{account_share.trough_date|blank}}</td>
+</tr>
+{% endfor %}
+</table>
+{% endblock %}

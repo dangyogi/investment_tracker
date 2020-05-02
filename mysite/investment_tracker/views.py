@@ -1,0 +1,443 @@
+# views.py
+
+import os.path
+import datetime
+from collections import OrderedDict
+
+from django.shortcuts import render
+from django.http import HttpResponse
+from django.db import transaction
+
+from . import models
+
+# Create your views here.
+
+
+Downloads_dir = os.path.expanduser(os.path.join('~', 'Downloads'))
+
+
+def prev_month(date, target_day):
+    try:
+        if date.month == 1:
+            return date.replace(year=date.year - 1, month=12,
+                                day=target_day)
+        return date.replace(month=date.month - 1, day=target_day)
+    except ValueError:
+        print("prev_month backing up to day", target_day - 1)
+        return prev_month(date, target_day - 1)
+
+
+def index(request):
+    print("index called")
+    accts = models.Account.objects.all()
+    start_date = models.AccountShares.objects.latest().date
+    end_date = models.AccountShares.objects.earliest().date
+
+    print("index from", start_date, "back to", end_date)
+
+    # list of (date, [acct_bal, ...])
+    balances = []
+    date = start_date
+    while date >= end_date:
+        print("doing date", date)
+        row = (date, [acct.balance_on_date(date) for acct in accts])
+        print(row)
+        balances.append(row)
+        date = prev_month(date, start_date.day)
+
+    context = dict(accts=accts,
+                   balances=balances,
+    )
+    print("rendering")
+    return render(request, 'index.html', context)
+
+
+# For Dividends for BLV, Apr 9, 2007 - Apr 17, 2020:
+#   https://query1.finance.yahoo.com/v7/finance/download/BLV?period1=1176163200&period2=1587168000&interval=1d&events=div
+
+
+@transaction.atomic
+def clear_history(request, start_date, end_date):
+    #models.AccountFundHistory.objects.filter(
+    #                            date__range=(start_date, end_date)) \
+    #                         .delete()
+    models.AccountTransactionHistory.objects.filter(
+                                      trade_date__range=(start_date,
+                                                         end_date)) \
+                                    .delete()
+    models.AccountShares.objects.filter(
+                                      date__range=(start_date, end_date)) \
+                                    .delete()
+    #models.AccountSnapshot.objects.filter(
+    #                                  date__range=(start_date, end_date)) \
+    #                                .delete()
+    Account.objects.all().update(transaction_start_date=None,
+                                 transaction_end_date=None,
+                                 shares_start_date=None,
+                                 shares_end_date=None)
+    return HttpResponse(f"Cleared history between {start_date} and {end_date}.")
+
+
+def load_fund_history(request, ticker='ALL'):
+    r'''Will take 'ALL' as ticker for all funds.
+    '''
+    if request.method not in ('POST', 'GET'):
+        response = HttpResponse()
+        response.status_code = 405  # Method not allowed
+    else:
+        ticker = ticker.upper()
+        if ticker != 'ALL':
+            fund = models.Fund.objects.get(pk=ticker)
+            try:
+                dividend_rows, price_rows = fund.load_history()
+                print("dividend_rows", dividend_rows, "price_rows", price_rows)
+                message = f"{ticker}: {dividend_rows} dividends loaded, " \
+                            f"{price_rows} prices loaded."
+                print("DONE:", message)
+                response = HttpResponse(message)
+            except models.Yahoo_exception as e:
+                print(e)
+                response = e.response()
+        else:
+            error_funds = []
+            total_dividend_rows = 0
+            total_price_rows = 0
+            for fund in models.Fund.objects.all():
+                if fund.ticker == 'VMFXX':
+                    continue
+                try:
+                    dividend_rows, price_rows = fund.load_history()
+                    print(f"{fund}: {dividend_rows} dividends loaded, "
+                            f"{price_rows} prices loaded.")
+                    total_dividend_rows += dividend_rows
+                    total_price_rows += price_rows
+                except models.Yahoo_exception as e:
+                    print(e)
+                    error_funds.append(fund.ticker)
+            if error_funds:
+                response = HttpResponse(f"{error_funds} failed")
+            else:
+                message = f"{total_dividend_rows} dividends loaded, " \
+                            f"{total_price_rows} prices loaded."
+                print("DONE:", message)
+                response = HttpResponse(message)
+    return response
+
+
+def load_transactions(request, filename, end_date):
+    r'''Loads/updates the AccountTransactionHistory table.
+    
+    The transactions are taken from the ofxdownload.csv file downloaded
+    from Vanguard.
+    '''
+    if request.method not in ('POST', 'GET'):
+        return HttpResponse(status=405)   # Method not allowed
+    if end_date >= datetime.date.today():
+        return HttpResponse("end_date must be earlier than today",
+                            content_type='text/plain',
+                            status=400)
+    path = os.path.join(Downloads_dir, filename)
+    with open(path, newline='') as file:
+        trans_accounts, new_trans_funds = models.Account.load_csv(file,
+                                                                  end_date)
+    response = HttpResponse(
+       f"Transactions loaded for {trans_accounts} accounts, "
+       f"{new_trans_funds} new funds created."
+    )
+    return response
+
+
+def dates(request, account_id):
+    acct = models.Account.objects.get(pk=account_id)
+    return HttpResponse(
+             f"Account {account_id}: "
+               f"Trans {acct.transaction_start_date} to "
+                     f"{acct.transaction_end_date}," 
+               f"Shares {acct.shares_start_date} to {acct.shares_end_date}")
+
+
+def get_populated_tree(acct, date):
+    tree = acct.get_tree()
+
+    # {ticker: account_share}
+    shares_by_ticker = acct.shares_on_date(date)
+
+    tickers = [cat.ticker for cat in tree if cat.ticker is not None]
+    share_prices = models.FundPriceHistory.share_prices(tickers, date)
+
+    # Add shares to tree
+    for row in tree:
+        if row.ticker is not None:
+            if row.ticker in shares_by_ticker:
+                row.account_share = shares_by_ticker[row.ticker]
+                row.shares = row.account_share.shares
+                row.share_price = row.account_share.share_price
+                row.balance = row.account_share.balance
+                row.pct_of_peak = row.account_share.pct_of_peak
+                row.peak_date = row.account_share.peak_date
+                row.pct_of_trough = row.account_share.pct_of_trough
+                row.trough_date = row.account_share.trough_date
+            else:
+                row.fph = share_prices[row.ticker]
+                row.shares = 0.0
+                row.share_price = row.fph.close
+                row.balance = 0.0
+                row.pct_of_peak = row.fph.pct_of_peak
+                row.peak_date = row.fph.peak_date
+                row.pct_of_trough = row.fph.pct_of_trough
+                row.trough_date = row.fph.trough_date
+
+    # Calculate group balances:
+    def calc_balance(cat):
+        if cat.ticker is not None:
+            return cat.balance
+        bal = sum(calc_balance(c) for c in cat.children)
+        cat.balance = bal
+        return bal
+    calc_balance(tree[0])
+
+    return tree
+
+
+def add_plans(tree):
+    # Calculate plans:
+    acct_balance = tree[0].balance
+    def calc_plan(cat, starting_bal, remaining_bal, last):
+        cat.plan_pct_of_group, cat.plan_balance = \
+          cat.plan.plan_balance(starting_bal, remaining_bal, last)
+        cat.plan_pct_of_acct = cat.plan_balance / acct_balance
+        remaining = cat.plan_balance
+        for i, c in enumerate(cat.children, 1):
+            remaining -= calc_plan(c, cat.plan_balance, remaining,
+                                   last=(i == len(cat.children)))
+        return cat.plan_balance
+    calc_plan(tree[0], acct_balance, acct_balance, True)
+
+    # Add adj_plan_balance == plan_balance (as a default)
+    #
+    # Find US and Bonds Categories
+    for cat in tree:
+        cat.adj_plan_balance = cat.plan_balance
+        cat.adj_pct = 1.0
+        if cat.name == 'Bonds':
+            bond_cat = cat
+        elif cat.name == 'US':
+            us_cat = cat
+
+    return us_cat, bond_cat
+
+
+def adjust(cat, pct):
+    cat.adj_plan_balance *= pct
+    cat.adj_pct = pct
+    for c in cat.children:
+        adjust(c, pct)
+
+
+def adjust_plan(us_cat, bond_cat, adj_pct):
+    adj_dollars = us_cat.plan_balance / adj_pct
+    print("adj_pct", adj_pct, "adj_dollars", adj_dollars,
+          "bond.plan_balance", bond_cat.plan_balance)
+    if adj_dollars - us_cat.plan_balance >= bond_cat.plan_balance:
+        # Not enough in bonds to cover adj_dollars...
+        # Put all of bonds into US.
+        adjust(us_cat, 1.0 + bond_cat.plan_balance / us_cat.plan_balance)
+        adjust(bond_cat, 0)
+    else:
+        adjust(us_cat, 1/adj_pct)
+        adjust(bond_cat,
+          1.0 - (adj_dollars - us_cat.plan_balance) / bond_cat.plan_balance)
+
+
+def account(request, account_id, date):
+    acct = models.Account.objects.get(pk=account_id)
+
+    if not (acct.shares_start_date <= date <= acct.shares_end_date):
+        return HttpResponse(f"date must be between {acct.shares_start_date} "
+                              f"and {acct.shares_end_date}",
+                            content_type='text/plain',
+                            status=400)
+
+    print("account", acct, "date", date, "Category root", acct.category)
+
+    tree = get_populated_tree(acct, date)
+    us_cat, bond_cat = add_plans(tree)
+
+    def find_max_pct(cat):
+        if cat.ticker is not None:
+            if cat.plan_balance:
+                return cat.pct_of_peak
+            return 0
+        return max(find_max_pct(c) for c in cat.children)
+
+    adjust_plan(us_cat, bond_cat, find_max_pct(us_cat))
+
+    context = dict(acct=acct, date=date, tree=tree,
+    )
+    return render(request, 'account.html', context)
+
+
+def check_structure(request):
+    tested = set()
+    for acct in models.Account.objects.all():
+        if acct.category_id is not None:
+            print(f"Checking {acct}")
+            tested.update(acct.category.check_structure())
+    categories = frozenset(cat.id for cat in models.Category.objects.all())
+    unlinked_cats = categories.difference(tested)
+    if unlinked_cats:
+        print(f"Unlinked categories {unlinked_cats}")
+    return HttpResponse("Category checks complete.  "
+                          "Examine http log for results.")
+
+
+def get_plan(request, cat_name, account_id=1):
+    acct = models.Account.objects.get(pk=account_id)
+    cat = models.Category.objects.get(name=cat_name)
+    return HttpResponse(str(cat.get_plan(acct)), content_type="text/plain")
+
+
+def get_fund(request, cat_name, account_id=1):
+    acct = models.Account.objects.get(pk=account_id)
+    cat = models.Category.objects.get(name=cat_name)
+    return HttpResponse(str(cat.get_fund(acct)), content_type="text/plain")
+
+
+def get_children(request, cat_name, account_id=1):
+    acct = models.Account.objects.get(pk=account_id)
+    cat = models.Category.objects.get(name=cat_name)
+    return HttpResponse('\r\n'.join(str(child)
+                                    for child in cat.get_children(acct)),
+                        content_type="text/plain")
+
+
+def get_tree(request, account_id):
+    acct = models.Account.objects.get(pk=account_id)
+    context = dict(
+        acct=acct,
+        tree=acct.get_tree(),
+    )
+    return render(request, 'tree.html', context)
+
+
+def update_shares(request, reload=False):
+    if request.method not in ('POST', 'GET'):
+        response = HttpResponse()
+        response.status_code = 405  # Method not allowed
+    else:
+        models.AccountShares.update(reload)
+        response = HttpResponse(f"Done.", content_type="text/plain")
+    return response
+
+
+""" FIX: Delete
+def update_snapshot(request, start_date=None, reload=False):
+    if request.method not in ('POST', 'GET'):
+        response = HttpResponse()
+        response.status_code = 405  # Method not allowed
+    else:
+        end_date = models.AccountSnapshot.update(start_date, reload)
+        response = HttpResponse(f"Loaded up to {end_date}.",
+                                content_type="text/plain")
+    return response
+"""
+
+
+def shares(request, account_id, date):
+    acct = models.Account.objects.get(pk=account_id)
+    shares_by_ticker = acct.shares_on_date(date)
+    print(sorted(shares_by_ticker.items()))
+    context = dict(
+        account=acct,
+        date=date,
+        shares_by_ticker=sorted(shares_by_ticker.items()),
+        balance=sum(s.balance for s in shares_by_ticker.values()),
+    )
+    return render(request, 'shares.html', context)
+ 
+
+def help(request):
+    return render(request, 'help.html')
+
+
+def rebalance(request, owner_id, adj_pct):
+    user = models.User.objects.get(pk=owner_id)
+    accts = models.Account.objects.filter(owner_id=owner_id).all()
+    trees = [get_populated_tree(acct, acct.shares_end_date) for acct in accts]
+
+    if adj_pct < 1.0:
+        return HttpResponse(f"adj_pct must be >= 1.0, got {adj_pct}",
+                            content_type='text/plain', status=400)
+
+    if request.method == 'GET':
+        balances = {tree[0].account.id: tree[0].balance
+                    for tree in trees}
+        share_prices = {cat.ticker: cat.share_price
+                        for cat in trees[0] if cat.ticker is not None}
+    else:
+        if request.method != 'POST':
+            return HTTPResponse("Only GET and POST methods allowed", 
+                                content_type='text/plain', status=405)
+        # Get account balances
+        balances = {acct.id: float(request.POST['balance_{}'.format(acct.id)])
+                    for acct in accts}
+
+        # Get share_prices
+        tickers = [cat.ticker for cat in trees[0] if cat.ticker is not None]
+        share_prices = {ticker: float(request.POST[ticker])
+                        for ticker in tickers}
+
+    # Set account balances
+    for tree in trees:
+        tree[0].balance = balances[tree[0].account.id]
+
+    # Add plans, adj_plans and change_in_shares
+    for tree in trees:
+        us_cat, bond_cat = add_plans(tree)
+        adjust_plan(us_cat, bond_cat, adj_pct)
+
+        # Calculate change_in_shares
+        for cat in tree:
+            if cat.ticker is not None:
+                cat.share_price = share_prices[cat.ticker]
+                cat.change_in_shares =   (cat.adj_plan_balance - cat.balance) \
+                                       / cat.share_price
+
+    # list of (ticker, share_price, acct categories) ordered by rebalance
+    # amount (sells first, buys last) based on first account in accts.
+    ticker_rows = sorted([(cats[0].ticker, share_prices[cats[0].ticker], cats)
+                          for cats in zip(*trees)
+                           if cats[0].ticker is not None],
+                         key=lambda r:
+                               r[2][0].adj_plan_balance - r[2][0].balance)
+
+    # list of (balance, sum(balances), sum(adj_plan_balances)), one per acct
+    totals = [(balances[accts[i].id],
+               sum(cats[i].balance for _, _, cats in ticker_rows),
+               sum(cats[i].adj_plan_balance for _, _, cats in ticker_rows))
+              for i in range(len(accts))]
+
+    print("totals", totals)
+
+    context = dict(
+        user=user,
+        accts=accts,
+        balances=balances,
+        adj_pct=adj_pct,
+        ticker_rows=ticker_rows,
+        totals=totals,
+    )
+
+    return render(request, 'rebalance.html', context)
+
+
+@transaction.atomic
+def rebalanced(request, owner_id):
+    if request.method not in ('POST', 'GET'):
+        response = HttpResponse()
+        response.status_code = 405  # Method not allowed
+    else:
+        models.Account.objects.filter(owner_id=owner_id) \
+                              .update(rebalance_date=datetime.date.today())
+        response = HttpResponse(f"Done.", content_type="text/plain")
+    return response

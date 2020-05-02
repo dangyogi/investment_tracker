@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+  <link rel="stylesheet" href="{{ static("style.css") }}">
+  <title>{% block title %}Title block left blank{% endblock %}</title>
+</head>
+<body>
+<div>
+<a href={{ url('index') }}>Home</a>
+{# <a href={{ url('load_last_download') }}>Load Last Download</a> #}
+<a href={{ url('load_all_fund_history') }}>Update Fund History</a>
+<a href={{ url('update_shares') }}>Update Share History</a>
+{% block links %}
+{% endblock %}
+</div>
+{% block body %}body block left blank{% endblock %}
+</body>
+</html>

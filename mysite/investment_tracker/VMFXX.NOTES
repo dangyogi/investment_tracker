@@ -1,0 +1,211 @@
+This combination works (if you ignore the rows marked with X)!
+
+sqlite> select account_id, fund_id = 'VMFXX' as vmfxx, transaction_type, transaction_type, sum(net_amount) from investment_tracker_accounttransactionhistory where account_id = 2 and fund_id is not null group by account_id, fund_id = 'VMFXX', transaction_type order by 2, transaction_type;
+2|0|Buy|Buy|-217407.13
+2|0|Capital gain (ST)|Capital gain (ST)|11.3
+2|0|Dividend|Dividend|1273.03
+2|0|Reinvestment|Reinvestment|-1102.41
+2|0|Reinvestment (ST gain)|Reinvestment (ST gain)|-11.3
+2|0|Sell|Sell|200601.01
+2|0|Transfer (incoming)|Transfer (incoming)|93087.96
+2|1|Dividend|Dividend|33.81
+2|1|Reinvestment|Reinvestment|-11.65
+2|1|Sweep in|Sweep in|-170338.46
+2|1|Sweep out|Sweep out|170298.88
+sqlite> select account_id, fund_id = 'VMFXX' as vmfxx, transaction_type, transaction_type, sum(net_amount) from investment_tracker_accounttransactionhistory where account_id = 2 and fund_id isnull group by account_id, transaction_type order by transaction_type;
+2||Conversion (incoming)|Conversion (incoming)|14179
+2||Transfer (incoming)|Transfer (incoming)|2473.92
+-------------------------------
+  2|0|Buy|Buy|-217407.13
+  2|0|Capital gain (ST)|Capital gain (ST)|11.3
+  2|0|Dividend|Dividend|1273.03
+  2|0|Reinvestment|Reinvestment|-1102.41
+  2|0|Reinvestment (ST gain)|Reinvestment (ST gain)|-11.3
+  2|0|Sell|Sell|200601.01
+X 2|0|Transfer (incoming)|Transfer (incoming)|93087.96
+  2|1|Dividend|Dividend|33.81
+X 2|1|Reinvestment|Reinvestment|-11.65
+X 2|1|Sweep in|Sweep in|-170338.46
+X 2|1|Sweep out|Sweep out|170298.88
+  2||Conversion (incoming)|Conversion (incoming)|14179
+  2||Transfer (incoming)|Transfer (incoming)|2473.92
+-------------------------------
+-217407.13 +11.3 +1273.03 -1102.41 -11.3 +200601.01 +33.81 +14179 +2473.92
+-------------------------------
+sum of non X is 51.23
+-------------------------------
+
+What transaction_types does the null fund_id have (in account_id 2)?
+We count all of these.
+
+select transaction_type, sum(net_amount)
+from investment_tracker_accounttransactionhistory
+where account_id = 2 and fund_id isnull
+group by transaction_type
+order by transaction_type;
+------------------------------------
+Conversion (incoming)|14179
+Transfer (incoming)|2473.92
+------------------------------------
+
+What transaction_types does VMFXX have (in account_id 2)?
+Only use Dividend!
+
+select transaction_type, sum(net_amount)
+from investment_tracker_accounttransactionhistory
+where account_id = 2 and fund_id = 'VMFXX'
+group by transaction_type
+order by transaction_type;
+------------------------------------
+  Dividend|33.81
+X Reinvestment|-11.65
+X Sweep in|-170338.46
+X Sweep out|170298.88
+-----------------------------------
+
+What transaction_types do the normal funds have (in account_id 2)?
+Only ignore LIKE 'Transfer%'...
+
+select transaction_type, sum(net_amount)
+from investment_tracker_accounttransactionhistory
+where account_id = 2 and fund_id is not null and fund_id != 'VMFXX'
+group by transaction_type
+order by transaction_type;
+-----------------------------------
+  Buy|-217407.13
+  Capital gain (ST)|11.3
+  Dividend|1273.03
+  Reinvestment|-1102.41
+  Reinvestment (ST gain)|-11.3
+  Sell|200601.01
+X Transfer (incoming)|93087.96
+-----------------------------------
+
+What WHERE clause do we need to get the right answer?
+
+select sum(net_amount)
+from investment_tracker_accounttransactionhistory
+where account_id = 2 and (
+    fund_id isnull
+ or fund_id != 'VMFXX' and transaction_type not like 'Transfer%'
+ or fund_id = 'VMFXX' and transaction_type = 'Dividend'
+);
+-----------------------------------
+51.2299999999814
+-----------------------------------
+
+Does this work for all accounts?  YES!
+
+select account_id, sum(net_amount)
+from investment_tracker_accounttransactionhistory
+where fund_id isnull
+   or fund_id != 'VMFXX' and transaction_type not like 'Transfer%'
+   or fund_id = 'VMFXX' and transaction_type = 'Dividend'
+group by account_id
+order by account_id;
+-----------------------------------
+1|66.9400000001115
+2|51.2299999999814
+3|8004.56
+4|784.1
+5|103.540000000001
+-----------------------------------
+
+What about on Jan 6, 2020?  YES!
+(Except "Settlement fund accrued dividends", which seems to always be a small amount.)
+
+select account_id, sum(net_amount)
+from investment_tracker_accounttransactionhistory
+where trade_date <= '2020-01-06' and (
+      fund_id isnull
+   or fund_id != 'VMFXX' and transaction_type not like 'Transfer%'
+   or fund_id = 'VMFXX' and transaction_type = 'Dividend'
+)
+group by account_id
+order by account_id;
+-----------------------------------
+1|758.160000000084
+2|100.809999999998
+3|8044.99
+4|10759.07
+5|6089.79
+-----------------------------------
+
+Do any LIKE 'Transfer%' transactions have shares?  YES! ???
+Note that two have no net_amounts.  What does that mean?
+Looks like these need to count for shares, but not for net_amount...
+
+select distinct fund_id, transaction_type, account_id, shares, net_amount
+from investment_tracker_accounttransactionhistory
+where transaction_type like 'Transfer%' and shares != 0
+order by fund_id, transaction_type, account_id;
+-----------------------------------
+FCGAX|Transfer (incoming)|3|418.455|0
+FKSAX|Transfer (incoming)|3|3727.626|0
+VBTLX|Transfer (incoming)|1|9381.986|102451.28
+VBTLX|Transfer (incoming)|2|2752|30189.44
+VBTLX|Transfer (incoming)|4|16384.684|180395.37
+VBTLX|Transfer (incoming)|5|4634.58|51304.8
+VEMAX|Transfer (incoming)|1|959.433|34117.43
+VEMAX|Transfer (incoming)|4|1695.764|60928.8
+VEMAX|Transfer (incoming)|5|469.546|16499.84
+VFIAX|Transfer (incoming)|1|414.879|114365.54
+VFIAX|Transfer (incoming)|2|227.514|62898.52
+VFIAX|Transfer (incoming)|4|710.575|202663.09
+VFIAX|Transfer (incoming)|5|271.471|78406.25
+VIMAX|Transfer (incoming)|1|108.547|22696.09
+VIMAX|Transfer (incoming)|4|186.521|39533.12
+VIMAX|Transfer (incoming)|5|62.755|13476
+VSMAX|Transfer (incoming)|1|301.151|22598.37
+VSMAX|Transfer (incoming)|4|525.062|40104.23
+VSMAX|Transfer (incoming)|5|174.766|13456.98
+VTABX|Transfer (incoming)|1|770.524|17768.28
+VTABX|Transfer (incoming)|4|871.023|20172.89
+VTABX|Transfer (incoming)|5|289.917|6731.87
+VTMGX|Transfer (incoming)|1|2545.196|34029.27
+VTMGX|Transfer (incoming)|4|4480.689|62102.34
+-----------------------------------
+
+Do any null fund_ids have shares reported?  No!
+
+So these can also be included, or not, in fund share sums!
+
+select account_id, transaction_type, shares, net_amount
+from investment_tracker_accounttransactionhistory
+where fund_id isnull and shares != 0
+order by account_id, transaction_type;
+-----------------------------------
+
+Do any normal fund_ids have shares reported for transaction_type LIKE
+'Transfer%'?  Yes!
+
+So include these in the share totals!
+
+select account_id, transaction_type, fund_id, shares, net_amount
+from investment_tracker_accounttransactionhistory
+where fund_id != 'VMFXX' and transaction_type like 'Transfer%'
+  and shares != 0
+order by account_id, transaction_type;
+-----------------------------------
+
+Do any VMFXX fund_ids have shares reported for non 'Dividend' transaction_type?
+No!
+
+So these can also be included, or not, in fund share sums!
+
+select account_id, transaction_type, shares, net_amount
+from investment_tracker_accounttransactionhistory
+where fund_id = 'VMFXX' and transaction_type != 'Dividend'
+  and shares != 0
+order by account_id, transaction_type;
+-----------------------------------
+
+Any VMFXX funds LIKE 'Transfer%'?  No!
+
+So it's OK to exclude all non NULL fund_ids LIKE 'Transfer%' for cash sums.
+
+select account_id, transaction_type, shares, net_amount
+from investment_tracker_accounttransactionhistory
+where fund_id = 'VMFXX' and transaction_type LIKE 'Transfer%'
+order by account_id, transaction_type;
+-----------------------------------

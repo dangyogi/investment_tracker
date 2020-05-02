@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Help{% endblock %}
+
+{% block body %}
+<ul>
+<li>(index)</li>
+<li>account/account_id/date</li>
+<li>check_structure</li>
+<li>dates/account_id</li>
+<li>get_children/cat_name[/account_id]</li>
+<li>get_fund/cat_name[/account_id]</li>
+<li>get_plan/cat_name[/account_id]</li>
+<li>get_tree/account_id</li>
+<li>help</li>
+<li>load_transactions/filename/end_date</li>
+<li>load_fund_history[/ticker]</li>
+<li>rebalance/owner_id/adj_pct</li>
+<li>rebalanced/owner_id</li>
+<li>shares/account_id/date</li>
+<li>update_shares[/&lt;int:reload&gt;]</li>
+</ul>
+
+To load up the data from external sources:
+<ol>
+<li>Load Transaction History from Vanguard.</li>
+  <ol>
+  <li>Download transactions from Vanguard in a .csv format.</li>
+    Select the following download options on Vanguard:
+    <ol>
+    <li>Step 1: choose the spreadsheet-compatible CSV file.</li>
+    <li>Step 2: choose the Custom date range</li>
+    <ul>
+    <li>From: the day after the
+    transaction_end_date recorded in the Account table.</li>
+    <li>To: yesterday's date (to avoid partial transactions for today).</li>
+    </ul>
+    </ol>
+    <p>This puts an ofxdownload.csv file in your Downloads directory.  Pay
+    attention to which number the browser appends to the filename, for
+    example, "ofxdownload (2).csv".</p>
+  </li>
+  <li>load_transactions/filename/end_date</li>
+  <p>Enter the "To" date the you gave Vanguard for the download.</p>
+  </ol>
+<li>load_fund_history</li>
+    <p>This automatically goes to finance.yahoo.com as needed to get fund
+    dividend and price history.</p>
+<li>update_shares</li>
+    <p>This creates the AccountShare rows from the data above.</p>
+</ol>
+{% endblock %}

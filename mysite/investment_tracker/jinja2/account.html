@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}{{acct}} on {{date|full_date}}{% endblock %}
+
+{% block links %}
+<a href="{{ url('dates', acct.id) }}">Dates</a>
+{% endblock %}
+
+{% block body %}
+<h1 class="centered">{{acct}} Account on {{date|full_date}}
+{% if acct.rebalance_date is not none %}
+rebalanced {{acct.rebalance_date|short_date}}
+{% endif %}
+</h1>
+
+<table>
+<tr>
+  <th>Category</th>
+  <th>Balance</th>
+  <th>Plan Balance</th>
+  <th>Percent of Plan</th>
+  <th>Peak Plan</th>
+  <th>Peak Adj</th>
+  <th>Fund</th>
+  <th>Peak Balance</th>
+  <th>Percent of Peak</th>
+  <th>Peak Date</th>
+  <th>Trough Balance</th>
+  <th>Percent of Trough</th>
+  <th>Trough Date</th>
+</tr>
+{% for cat in tree %}
+<tr>
+  <td>{{("&nbsp;" * (2 * (cat.depth - 1)))|safe}}{{cat.name}}</td>
+  <td>{{cat.balance|dollars(0)}}</td>
+  <td>{{cat.plan_balance|dollars(0)}}</td>
+  {% if not cat.plan_balance %}
+    <td></td>
+  {% else %}
+    <td>{{(float(cat.balance) / float(cat.plan_balance))|percent(0)}}</td>
+  {% endif %}
+  <td>{{cat.adj_plan_balance|dollars(0)}}</td>
+  <td>{{cat.adj_pct|percent(0)}}</td>
+  <td>{{cat.ticker|blank}}</td>
+  {% if cat.ticker %}
+    <td>{{(cat.plan_balance / cat.pct_of_peak)|dollars(0)}}</td>
+    <td>{{cat.pct_of_peak|percent(0)}}</td>
+    <td>{{cat.peak_date|short_date}}</td>
+    {% if cat.pct_of_trough %}
+      <td>{{(cat.plan_balance / cat.pct_of_trough)|dollars(0)}}</td>
+    {% else %}
+      <td></td>
+    {% endif %}
+    <td>{{cat.pct_of_trough|percent(0, '')}}</td>
+    <td>{{cat.trough_date|short_date}}</td>
+  {% else %}
+    <td></td>
+    <td></td>
+    <td></td>
+    <td></td>
+    <td></td>
+    <td></td>
+  {% endif %}
+</tr>
+{% endfor %}
+</table>
+{% endblock %}

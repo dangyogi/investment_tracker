@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}{{acct}} Tree{% endblock %}
+
+{% block body %}
+<h1 class="centered">{{acct}} Account
+{% if acct.rebalance_date is not none %}
+rebalanced {{acct.rebalance_date|short_date}}
+{% endif %}
+</h1>
+
+<table>
+<tr>
+  <th>Category</th>
+  <th>Depth</th>
+  <th>Order</th>
+  <th>Plan</th>
+  <th>Ticker</th>
+  <th>Children</th>
+</tr>
+{% for cat in tree %}
+<tr>
+  <td>{{("&nbsp;" * (2 * cat.depth))|safe}}{{cat.name}}</td>
+  <td>{{cat.depth}}</td>
+  <td>{{cat.order}}</td>
+  <td>{{str(cat.plan)}}</td>
+  <td>{{cat.ticker|blank}}</td>
+  <td>
+  {% for c in cat.children %}
+    {% if not loop.first %}
+    {{', '}}
+    {% endif %}
+    {{c.name}}
+  {% endfor %}
+  </td>
+</tr>
+{% endfor %}
+</table>
+{% endblock %}

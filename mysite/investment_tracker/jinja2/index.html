@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block body %}
+<table>
+<tr>
+  <th></th>
+{% for acct in accts %}
+  <th class="left-divider">{{acct.owner.name}}
+  {# <a href="{{ url('account', acct.id) }}">{{acct.name}}</a></th> #}
+  {{acct.name}}</th>
+{% endfor %}
+  <th class="left-divider">Total</th>
+</tr>
+{% for date, balances in balances %}
+<tr>
+  <td>{{date}}</td>
+  {% for bal  in balances %}
+    <td class="left-divider">{{bal|dollars(0)}}</td>
+  {% endfor %}
+  <td class="left-divider">{{sum(balances)|dollars(0)}}</td>
+</tr>
+{% endfor %}
+</table>
+{% endblock %}
