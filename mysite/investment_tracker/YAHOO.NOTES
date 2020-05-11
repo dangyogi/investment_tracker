@@ -1,0 +1,19 @@
+The start/end dates (period1 and period2) are as of midnight UTC.
+
+If you include today, during a trading day, it will report a false close!  So
+don't do that...
+
+The format of the URL is:
+
+https://finance.yahoo.com/quote/VUG/history?period1=1588291200&period2=1589241600&interval=1d&filter=history&frequency=1d
+
+"Adj Close" includes a fudge factor for dividends; so if you compare the Adj
+Close on two different dates, it will include dividends.  It does this by
+dropping lower than the plain "Close" going back in time as each dividend is
+paid.
+
+Plain "Close" does not include dividends.
+
+All dollar figures are reported to 6 decimals.
+
+Date format is YYYY-MM-DD.

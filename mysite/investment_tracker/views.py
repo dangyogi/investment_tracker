@@ -330,19 +330,6 @@ def update_shares(request, reload=False):
     return response
 
 
-""" FIX: Delete
-def update_snapshot(request, start_date=None, reload=False):
-    if request.method not in ('POST', 'GET'):
-        response = HttpResponse()
-        response.status_code = 405  # Method not allowed
-    else:
-        end_date = models.AccountSnapshot.update(start_date, reload)
-        response = HttpResponse(f"Loaded up to {end_date}.",
-                                content_type="text/plain")
-    return response
-"""
-
-
 def shares(request, account_id, date):
     acct = models.Account.objects.get(pk=account_id)
     shares_by_ticker = acct.shares_on_date(date)
