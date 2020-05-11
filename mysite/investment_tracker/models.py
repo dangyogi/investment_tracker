@@ -112,7 +112,52 @@ class Account(models.Model):
 
 
 def todate(s):
+    r'''Converts Vanguard date to Python date object.
+
+    Vanguard date format is: MM/DD/YYYY
+
+    Note that this is different than Yahoo's format (see fund_models.py)!
+    '''
     return datetime.strptime(s, "%m/%d/%Y").date()
+
+
+class attrs:
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+def read_balances_csv(file):
+    r'''Reads the current balance info for each account from Vanguard.
+
+    These are taken from an ofxdownload.csv file manually downloaded from
+    Vanguard.
+
+    Returns a list of objects with the following attributes:
+
+      * acct: the Account object
+      * fund: the Fund object
+      * shares: the current number of shares
+      * share_price: the current share price
+      * balance: the dollar value of these shares
+    '''
+    accts = {acct.account_number: acct
+             for acct in Account.objects.all()}
+    funds = {fund.ticker: fund
+             for fund in Fund.objects.all()}
+    ans = []
+    for account_number, rows \
+     in groupby(sorted(csv.DictReader(file), key=itemgetter('Account Number')),
+                key=itemgetter('Account Number')):
+        acct = accts[account_number]
+        for row in rows:
+            ans.append(
+              attrs(acct=acct,
+                    fund=funds[row['Symbol']],
+                    shares=float(row['Shares']),
+                    share_price=float(row['Share Price']),
+                    balance=float(row['Total Value']),
+            ))
+    return ans
 
 
 class AccountTransactionHistory(models.Model):
@@ -137,10 +182,10 @@ class AccountTransactionHistory(models.Model):
      or fund_id != 'VMFXX' and not transaction_type.startswith('Transfer')
      or fund_id = 'VMFXX' and transaction_type = 'Dividend'
 
-    Note that this exclude the "Settlement fund accrued dividends", which
+    Note that this excludes the "Settlement fund accrued dividends", which
     Vanguard also includes in its account balance.  Generally, these are small
     amounts, and I don't think that Vanguard reports these in the its
-    transactions.
+    transactions...
     '''
     account = models.ForeignKey(Account, on_delete=models.CASCADE)
     trade_date = models.DateField()

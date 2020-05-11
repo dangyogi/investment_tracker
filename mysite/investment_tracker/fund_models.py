@@ -1,8 +1,7 @@
 # fund_models.py
 
-import time
 import calendar
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, time, timedelta
 from io import StringIO
 import csv
 from operator import attrgetter, itemgetter
@@ -28,21 +27,58 @@ class Yahoo_exception(Exception):
 One_day = timedelta(days=1)
 One_week = timedelta(weeks=1)
 
+def yahoo_period(d, as_end_date=False):
+    r'''Yahoo uses standard Unix seconds since the epoch for its periods.
+
+    If `as_end_date` is False, returns midnight UTC on the morning of day `d`.
+    Otherwise, returns midnight UTC at the end of day `d`.
+
+    `d` must be a Python date object.
+    '''
+    if as_end_date:
+        d += One_day
+    return calendar.timegm(d.timetuple())
+
 def yahoo_url(ticker, events, start_date=None, end_date=None):
+    r'''Returns the URL to query Yahoo for fund history.
+
+    `start_date` is the first day to include in the data (defaults to
+    the beginning of time).
+
+    `end_date` is the last day to include in the data (defaults to yesterday).
+
+    This asserts that start_date <= end_date, and end_date < today.
+    '''
     if start_date:
-        period1 = calendar.timegm(start_date.timetuple())
+        period1 = yahoo_period(start_date, as_end_date=False)
         print("start_date is", start_date, "period1 is", period1)
     else:
+        # default to the beginning of time...
         period1 = 0
     if end_date is None:
-        end_date = date.today()
-    period2 = calendar.timegm(end_date.timetuple())
+        # default to yesterday
+        end_date = date.today() - One_day
+    period2 = yahoo_period(end_date, as_end_date=True)
     print("end_date is", end_date, "period2 is", period2)
+
+    assert period1 <= period2, \
+           f"yahoo_url: start_date, {start_date}, must be <= end_date, " \
+             f"{end_date}"
+
+    assert end_date < date.today(), \
+           f"yahoo_url: end_date, {end_date}, must be < today"
+
     return f"https://query1.finance.yahoo.com/v7/finance/download/{ticker}" \
            f"?period1={period1}&period2={period2}&interval=1d&events={events}"
 
 
 def todate(s):
+    r'''This converts a date downloaded from Yahoo into a Python date object.
+
+    The Yahoo format is: YYYY-MM-DD
+
+    Note that this is different than Vanguard's format (see models.py)!
+    '''
     return datetime.strptime(s, "%Y-%m-%d").date()
 
 
@@ -109,21 +145,23 @@ class FundDividendHistory(models.Model):
 
         Returns the number of rows added.
         '''
-        last_date = date(1,1,1)
         try:
             last_date = cls.objects.filter(fund_id=ticker).latest().date
             print(f"{ticker} last dividend recorded is on", last_date)
             r = requests.get(yahoo_url(ticker, 'div', last_date + One_day))
         except FundDividendHistory.DoesNotExist:
+            last_date = date(1,1,1)
             print(f"{ticker} got DoesNotExist looking for last dividend "
                     "recorded")
             r = requests.get(yahoo_url(ticker, 'div'))
         if r.status_code != 200:
-            raise Yahoo_exception(f"Bad status code from yahoo: "
-                                    f"{r.status_code}")
+            raise Yahoo_exception(
+                    f"Bad status code from yahoo for {ticker} dividends: "
+                      f"{r.status_code}")
         if r.headers['content-type'] != 'text/plain':
-            raise Yahoo_exception(f"Expected text/plain from yahoo, got "
-                                    f"{r.headers['content-type']}")
+            raise Yahoo_exception(
+                    f"Expected text/plain from yahoo for {ticker} dividends, "
+                      f"got {r.headers['content-type']}")
         rows = 0
         for row in csv.DictReader(StringIO(r.text)):
             #print(row)
@@ -134,6 +172,9 @@ class FundDividendHistory(models.Model):
                     dividends=float(row['Dividends']),
                 ).save()
                 rows += 1
+            else:
+                print(f"Got {row_date} from Yahoo for {ticker} dividends, "
+                        f"expected > {last_date} -- IGNORED")
         return rows
 
     class Meta:
@@ -199,7 +240,6 @@ class FundPriceHistory(models.Model):
 
         Returns the number of rows added.
         '''
-        last_date = date(1,1,1)
         try:
             latest = cls.objects.filter(fund=fund).latest()
             last_date = latest.date
@@ -213,9 +253,9 @@ class FundPriceHistory(models.Model):
             peak_date = latest.peak_date
             trough_close = latest.trough_close
             trough_date = latest.trough_date
-            r = requests.get(yahoo_url(fund.ticker, 'history',
-                                       last_date + One_day))
+            r = requests.get(yahoo_url(fund.ticker, 'history', start_date))
         except cls.DoesNotExist:
+            last_date = date(1,1,1)
             print(f"{fund.ticker} got DoesNotExist looking for last close "
                     "recorded")
             peak_close = 0
@@ -224,25 +264,27 @@ class FundPriceHistory(models.Model):
             trough_date = None
             r = requests.get(yahoo_url(fund.ticker, 'history'))
         if r.status_code != 200:
-            print(f"Bad status code from Yahoo {r.status_code}, "
+            print(f"Bad status code from Yahoo {r.status_code} "
+                    f"for {fund.ticker} prices, "
                     f"content-type {r.headers['content-type']}")
             print(r.text)
-            raise Yahoo_exception(f"Bad status code from yahoo: "
-                                    f"{r.status_code}")
+            raise Yahoo_exception(
+                    f"Bad status code from yahoo for {fund.ticker} prices: "
+                      f"{r.status_code}")
         if r.headers['content-type'] != 'text/plain':
-            raise Yahoo_exception(f"Expected text/plain from yahoo, got "
-                                    f"{r.headers['content-type']}")
+            raise Yahoo_exception(
+                    f"Expected text/plain from yahoo for {fund.ticker} prices, "
+                      f"got {r.headers['content-type']}")
         rows = 0
         for row in sorted(csv.DictReader(StringIO(r.text)),
                           key=itemgetter('Date')):
             #print(row)
             row_date = todate(row['Date'])
+            assert row_date > last_date, \
+                   f"Got {row_date} from Yahoo for {fund.ticker} prices, " \
+                     f"expected > {last_date}"
             if row['Close'] == 'null':
                 print(f"{fund.ticker} has null Close on {row_date} -- ignored")
-                continue
-            if row_date <= last_date:
-                print(fund, "load_prices skipping", row_date,
-                      "last_date is", last_date)
             else:
                 close = float(row['Close'])
                 if close > peak_close:
