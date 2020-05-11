@@ -19,7 +19,7 @@
 {% for ticker, account_share in shares_by_ticker %}
 <tr>
   <td>{{ticker}}</td>
-  <td>{{account_share.shares}}</td>
+  <td>{{account_share.shares|roundto(4)}}</td>
   <td>{{account_share.share_price|dollars(4)}}</td>
   <td>{{account_share.balance|dollars}}</td>
   <td>{{account_share.pct_of_peak|percent(none_value='')}}</td>

@@ -387,7 +387,7 @@ class AccountShares(models.Model):
                 if last_date is None:
                     shares = 0.0
                 else:
-                    shares = starting_shares[ticker]
+                    shares = starting_shares.get(ticker, 0.0)
 
                 print(ticker, "starting shares", shares)
 
