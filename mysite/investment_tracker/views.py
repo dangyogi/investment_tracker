@@ -147,13 +147,10 @@ def load_transactions(request, filename, end_date):
     return response
 
 
-def dates(request, account_id):
-    acct = models.Account.objects.get(pk=account_id)
-    return HttpResponse(
-             f"Account {account_id}: "
-               f"Trans {acct.transaction_start_date} to "
-                     f"{acct.transaction_end_date}," 
-               f"Shares {acct.shares_start_date} to {acct.shares_end_date}")
+def dates(request):
+    accounts = sorted(models.Account.objects.all(),
+                      key=lambda acct: (acct.owner.name, acct.name))
+    return render(request, 'dates.html', dict(accounts=accounts))
 
 
 def get_populated_tree(acct, date):

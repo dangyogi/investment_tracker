@@ -5,21 +5,21 @@
 {% block body %}
 <p>All dates in URLs are YYYY-MM-DD</p>
 <ul>
-<li>(index)</li>
+<li><a href="{{ url('index') }}">(index)</a></li>
 <li>account/account_id/date</li>
-<li>check_structure</li>
-<li>dates/account_id</li>
+<li><a href="{{ url('check_structure') }}">check_structure</a></li>
+<li><a href="{{ url('dates') }}">dates</a></li>
 <li>get_children/cat_name[/account_id]</li>
 <li>get_fund/cat_name[/account_id]</li>
 <li>get_plan/cat_name[/account_id]</li>
 <li>get_tree/account_id</li>
-<li>help</li>
+<li><a href="{{ url('help') }}">help</a></li>
 <li>load_transactions/filename/end_date</li>
-<li>load_fund_history[/ticker]</li>
+<li><a href={{ url('load_all_fund_history') }}">load_fund_history</a>[/ticker]</li>
 <li>rebalance/owner_id/adj_pct</li>
 <li>rebalanced/owner_id</li>
 <li>shares/account_id/date</li>
-<li>update_shares[/&lt;int:reload&gt;]</li>
+<li><a href="{{ url('update_shares') }}">update_shares</a>[/&lt;int:reload&gt;]</li>
 </ul>
 
 To load up the data from external sources:
@@ -44,10 +44,10 @@ To load up the data from external sources:
   <li>load_transactions/filename/end_date</li>
   <p>Enter the "To" date the you gave Vanguard for the download.</p>
   </ol>
-<li>load_fund_history</li>
+<li><a href="{{ url('load_all_fund_history') }}">load_fund_history</a></li>
     <p>This automatically goes to finance.yahoo.com as needed to get fund
     dividend and price history.</p>
-<li>update_shares</li>
+<li><a href="{{ url('update_shares') }}">update_shares</a></li>
     <p>This creates the AccountShare rows from the data above.</p>
 </ol>
 {% endblock %}

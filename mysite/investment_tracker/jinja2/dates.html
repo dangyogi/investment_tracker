@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}
+Dates
+{% endblock %}
+
+{% block body %}
+<h1>Dates</h1>
+
+<table>
+<tr>
+  <th rowspan="2">Owner</th>
+  <th rowspan="2">Account</th>
+  <th colspan="2">Transaction</th>
+  <th colspan="2">Shares</th>
+  <th></th>
+</tr>
+<tr>
+  <th>Start</th>
+  <th>End</th>
+  <th>Start</th>
+  <th>End</th>
+  <th>Rebalance Date</th>
+</tr>
+
+{% for acct in accounts %}
+<tr>
+  <td>{{acct.owner.name}}</td>
+  <td>{{acct.name}}</td>
+  <td>{{acct.transaction_start_date|blank}}</td>
+  <td>{{acct.transaction_end_date|blank}}</td>
+  <td>{{acct.shares_start_date|blank}}</td>
+  <td>{{acct.shares_end_date|blank}}</td>
+  <td>{{acct.rebalance_date|blank}}</td>
+</tr>
+{% endfor %}
+
+</table>
+{% endblock %}
