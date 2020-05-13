@@ -85,6 +85,7 @@ class Account(models.Model):
                 in AccountShares.objects.filter(account=self, date=date).all()}
 
     @staticmethod
+    @transaction.atomic
     def load_csv(file, end_date):
         r'''Loads fund transactions from Vanguard download.
 
@@ -92,16 +93,19 @@ class Account(models.Model):
         '''
         split = split_csv(file)
 
-        # Discard the first part of the .csv file.
-        for line in split.gen():
-            pass
-
+        accounts = read_balances_csv(split.gen())
         #accounts, new_fund_funds = \
         #  AccountFundHistory.load_csv(split.gen(), end_date)
         trans_accts, new_trans_funds = \
           AccountTransactionHistory.load_csv(split.gen(), end_date)
+
+        # Update transaction_end_date for accounts with no new transactions
+        for account, _ in accounts.values():
+            if account.id not in trans_accts:
+                account.transaction_end_date = end_date
+                acct.save()
         #AccountShares.update()
-        return trans_accts, new_trans_funds
+        return len(trans_accts), new_trans_funds
 
     class Meta:
         constraints = [
@@ -132,7 +136,8 @@ def read_balances_csv(file):
     These are taken from an ofxdownload.csv file manually downloaded from
     Vanguard.
 
-    Returns a list of objects with the following attributes:
+    Returns {account_id: account, {ticker: attrs}}, where attrs as the following
+    attributes:
 
       * acct: the Account object
       * fund: the Fund object
@@ -144,19 +149,18 @@ def read_balances_csv(file):
              for acct in Account.objects.all()}
     funds = {fund.ticker: fund
              for fund in Fund.objects.all()}
-    ans = []
+    ans = {}
     for account_number, rows \
      in groupby(sorted(csv.DictReader(file), key=itemgetter('Account Number')),
                 key=itemgetter('Account Number')):
-        acct = accts[account_number]
-        for row in rows:
-            ans.append(
-              attrs(acct=acct,
-                    fund=funds[row['Symbol']],
-                    shares=float(row['Shares']),
-                    share_price=float(row['Share Price']),
-                    balance=float(row['Total Value']),
-            ))
+        acct = accts[hash(account_number)]
+        tickers = {row['Symbol']: attrs(acct=acct,
+                                        fund=funds[row['Symbol']],
+                                        shares=float(row['Shares']),
+                                        share_price=float(row['Share Price']),
+                                        balance=float(row['Total Value']))
+                   for row in rows}
+        ans[acct.id] = acct, tickers
     return ans
 
 
@@ -203,13 +207,14 @@ class AccountTransactionHistory(models.Model):
     account_type = models.CharField(max_length=20)
 
     @classmethod
-    @transaction.atomic
     def load_csv(cls, file, end_date):
         r'''Loads csv `file` produced by Vanguard.
 
-        Updates Account.shares_start_date and Account.shares_end_date.
+        Updates Account.transaction_start_date and Account.transaction_end_date.
+
+        Returns frozenset of accounts seen, number of funds created.
         '''
-        accounts_seen = {}  # account_number: Account, start_date, end_date
+        accounts_seen = {}  # account_number: Account, start_date, prev_end_date
         funds_created = 0
         for row in csv.DictReader(file):
             trade_date=todate(row['Trade Date'])
@@ -217,7 +222,7 @@ class AccountTransactionHistory(models.Model):
             # Get account record from accounts_seen
             account_number = row['Account Number']
             if account_number in accounts_seen:
-                acct, start_date, end_date = accounts_seen[account_number]
+                acct, start_date, prev_end_date = accounts_seen[account_number]
             else:
                 acct = Account.get_account_number(account_number)
 
@@ -225,7 +230,7 @@ class AccountTransactionHistory(models.Model):
                 start_date = acct.transaction_start_date
                 prev_end_date = acct.transaction_end_date
 
-                accounts_seen[account_number] = acct, start_date, end_date
+                accounts_seen[account_number] = acct, start_date, prev_end_date
 
             assert prev_end_date is None or trade_date > prev_end_date, \
                    f"Earlier trade_date than expected.  Got {trade_date}, " \
@@ -280,16 +285,17 @@ class AccountTransactionHistory(models.Model):
                 account_type=row['Account Type'],
             ).save()
 
-            # Update start_date and end_date
-            accounts_seen[account_number] = acct, start_date, end_date
+            # Update start_date
+            accounts_seen[account_number] = acct, start_date, prev_end_date
 
-        # Update shares_start_date and shares_end_date in Accounts.
-        for acct, start_date, end_date in accounts_seen.values():
+        # Update transaction_start_date and transaction_end_date in Accounts.
+        for acct, start_date, _ in accounts_seen.values():
             acct.transaction_start_date = start_date
             acct.transaction_end_date = end_date
             acct.save()
 
-        return len(accounts_seen), funds_created
+        return (frozenset(acct for acct, start, end in accounts_seen.values()),
+                funds_created)
 
     class Meta:
         get_latest_by = 'trade_date'

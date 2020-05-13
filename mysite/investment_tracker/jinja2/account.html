@@ -2,10 +2,6 @@
 
 {% block title %}{{acct}} on {{date|full_date}}{% endblock %}
 
-{% block links %}
-<a href="{{ url('dates', acct.id) }}">Dates</a>
-{% endblock %}
-
 {% block body %}
 <h1 class="centered">{{acct}} Account on {{date|full_date}}
 {% if acct.rebalance_date is not none %}

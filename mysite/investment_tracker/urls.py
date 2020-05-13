@@ -62,8 +62,11 @@ urlpatterns = [
          name='reload_shares'),
     path('shares/<int:account_id>/<date:date>', views.shares),
     path('help', views.help, name='help'),
+    path('rebalance/<int:owner_id>', views.rebalance, name='default_rebalance'),
     path('rebalance/<int:owner_id>/<float:adj_pct>', views.rebalance,
-         name='rebalance'),
+         name='adj_rebalance'),
+    path('rebalance/<int:owner_id>/<float:adj_pct>/<filename>', views.rebalance,
+         name='adj_rebalance_filename'),
     path('rebalanced/<int:owner_id>', views.rebalanced, name='rebalanced'),
 ]
 

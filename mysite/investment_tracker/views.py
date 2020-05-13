@@ -153,7 +153,7 @@ def dates(request):
     return render(request, 'dates.html', dict(accounts=accounts))
 
 
-def get_populated_tree(acct, date):
+def get_populated_tree_by_date(acct, date):
     tree = acct.get_tree()
 
     # {ticker: account_share}
@@ -184,17 +184,36 @@ def get_populated_tree(acct, date):
                 row.pct_of_trough = row.fph.pct_of_trough
                 row.trough_date = row.fph.trough_date
 
-    # Calculate group balances:
-    def calc_balance(cat):
-        if cat.ticker is not None:
-            return cat.balance
-        bal = sum(calc_balance(c) for c in cat.children)
-        cat.balance = bal
-        return bal
     calc_balance(tree[0])
 
     return tree
 
+def calc_balance(cat):
+    r'''Calculate group balances.
+    '''
+    if cat.ticker is None:
+        cat.balance = sum(calc_balance(c) for c in cat.children)
+    return cat.balance
+
+def get_populated_tree_by_ofxdownload(acct, ticker_info):
+    tree = acct.get_tree()
+
+    # Add shares to tree
+    for row in tree:
+        if row.ticker is not None:
+            if row.ticker in ticker_info:
+                attrs = ticker_info[row.ticker]
+                row.shares = attrs.shares
+                row.share_price = attrs.share_price
+                row.balance = attrs.balance
+            else:
+                row.shares = 0
+                row.share_price = 0
+                row.balance = 0
+
+    calc_balance(tree[0])
+
+    return tree
 
 def add_plans(tree):
     # Calculate plans:
@@ -232,7 +251,11 @@ def adjust(cat, pct):
 
 
 def adjust_plan(us_cat, bond_cat, adj_pct):
-    adj_dollars = us_cat.plan_balance / adj_pct
+    r'''Multiplies all us_cat balances by adj_pct.
+
+    Takes the extra money needed out of bond_cat.
+    '''
+    adj_dollars = us_cat.plan_balance * adj_pct
     print("adj_pct", adj_pct, "adj_dollars", adj_dollars,
           "bond.plan_balance", bond_cat.plan_balance)
     if adj_dollars - us_cat.plan_balance >= bond_cat.plan_balance:
@@ -241,7 +264,7 @@ def adjust_plan(us_cat, bond_cat, adj_pct):
         adjust(us_cat, 1.0 + bond_cat.plan_balance / us_cat.plan_balance)
         adjust(bond_cat, 0)
     else:
-        adjust(us_cat, 1/adj_pct)
+        adjust(us_cat, adj_pct)
         adjust(bond_cat,
           1.0 - (adj_dollars - us_cat.plan_balance) / bond_cat.plan_balance)
 
@@ -257,7 +280,7 @@ def account(request, account_id, date):
 
     print("account", acct, "date", date, "Category root", acct.category)
 
-    tree = get_populated_tree(acct, date)
+    tree = get_populated_tree_by_date(acct, date)
     us_cat, bond_cat = add_plans(tree)
 
     def find_max_pct(cat):
@@ -267,7 +290,7 @@ def account(request, account_id, date):
             return 0
         return max(find_max_pct(c) for c in cat.children)
 
-    adjust_plan(us_cat, bond_cat, find_max_pct(us_cat))
+    adjust_plan(us_cat, bond_cat, 1.0/find_max_pct(us_cat))
 
     context = dict(acct=acct, date=date, tree=tree,
     )
@@ -344,10 +367,16 @@ def help(request):
     return render(request, 'help.html')
 
 
-def rebalance(request, owner_id, adj_pct):
+def rebalance(request, owner_id, adj_pct=1.0, filename='ofxdownload.csv'):
     user = models.User.objects.get(pk=owner_id)
     accts = models.Account.objects.filter(owner_id=owner_id).all()
-    trees = [get_populated_tree(acct, acct.shares_end_date) for acct in accts]
+
+    path = os.path.join(Downloads_dir, filename)
+    with open(path, newline='') as file:
+        current_accts = models.read_balances_csv(models.split_csv(file).gen())
+
+    trees = [get_populated_tree_by_ofxdownload(acct, current_accts[acct.id][1])
+             for acct in accts]
 
     if adj_pct < 1.0:
         return HttpResponse(f"adj_pct must be >= 1.0, got {adj_pct}",
@@ -383,9 +412,16 @@ def rebalance(request, owner_id, adj_pct):
         # Calculate change_in_shares
         for cat in tree:
             if cat.ticker is not None:
-                cat.share_price = share_prices[cat.ticker]
-                cat.change_in_shares =   (cat.adj_plan_balance - cat.balance) \
-                                       / cat.share_price
+                change = cat.adj_plan_balance - cat.balance
+                if change == 0:
+                    cat.change_in_shares = 0
+                else:
+                    cat.share_price = share_prices[cat.ticker]
+                    if cat.share_price:
+                        cat.change_in_shares = \
+                          (cat.adj_plan_balance - cat.balance) / cat.share_price
+                    else:
+                        cat.change_in_shares = "Ask Vanguard"
 
     # list of (ticker, share_price, acct categories) ordered by rebalance
     # amount (sells first, buys last) based on first account in accts.
@@ -408,6 +444,7 @@ def rebalance(request, owner_id, adj_pct):
         accts=accts,
         balances=balances,
         adj_pct=adj_pct,
+        filename=filename,
         ticker_rows=ticker_rows,
         totals=totals,
     )
