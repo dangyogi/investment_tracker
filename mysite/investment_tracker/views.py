@@ -170,18 +170,19 @@ def get_populated_tree_by_date(acct, date):
                 row.shares = row.account_share.shares
                 row.share_price = row.account_share.share_price
                 row.balance = row.account_share.balance
-                row.pct_of_peak = row.account_share.pct_of_peak
+                row.peak_pct_of_balance = row.account_share.peak_pct_of_balance
                 row.peak_date = row.account_share.peak_date
-                row.pct_of_trough = row.account_share.pct_of_trough
+                row.trough_pct_of_balance = \
+                  row.account_share.trough_pct_of_balance
                 row.trough_date = row.account_share.trough_date
             else:
                 row.fph = share_prices[row.ticker]
                 row.shares = 0.0
                 row.share_price = row.fph.close
                 row.balance = 0.0
-                row.pct_of_peak = row.fph.pct_of_peak
+                row.peak_pct_of_balance = row.fph.peak_pct_of_close
                 row.peak_date = row.fph.peak_date
-                row.pct_of_trough = row.fph.pct_of_trough
+                row.trough_pct_of_balance = row.fph.trough_pct_of_close
                 row.trough_date = row.fph.trough_date
 
     calc_balance(tree[0])
@@ -283,14 +284,14 @@ def account(request, account_id, date):
     tree = get_populated_tree_by_date(acct, date)
     us_cat, bond_cat = add_plans(tree)
 
-    def find_max_pct(cat):
+    def find_min_pct(cat):
         if cat.ticker is not None:
             if cat.plan_balance:
-                return cat.pct_of_peak
-            return 0
-        return max(find_max_pct(c) for c in cat.children)
+                return cat.peak_pct_of_balance
+            return 100
+        return min(find_min_pct(c) for c in cat.children)
 
-    adjust_plan(us_cat, bond_cat, 1.0/find_max_pct(us_cat))
+    adjust_plan(us_cat, bond_cat, find_min_pct(us_cat))
 
     context = dict(acct=acct, date=date, tree=tree,
     )

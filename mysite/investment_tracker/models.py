@@ -324,9 +324,9 @@ class AccountShares(models.Model):
     shares = models.FloatField(null=True)
     share_price = models.FloatField(null=True)
     balance = models.FloatField()  # share price taken from FundPriceHistory
-    pct_of_peak = models.FloatField()
+    peak_pct_of_balance = models.FloatField()
     peak_date = models.DateField()
-    pct_of_trough = models.FloatField(null=True)
+    trough_pct_of_balance = models.FloatField(null=True)
     trough_date = models.DateField(null=True)
 
     @classmethod
@@ -411,9 +411,9 @@ class AccountShares(models.Model):
                                   date=next_date, shares=shares,
                                   share_price=fph.close,
                                   balance=shares * fph.close,
-                                  pct_of_peak=fph.pct_of_peak,
+                                  peak_pct_of_balance=fph.peak_pct_of_close,
                                   peak_date=fph.peak_date,
-                                  pct_of_trough=fph.pct_of_trough,
+                                  trough_pct_of_balance=fph.trough_pct_of_close,
                                   trough_date=fph.trough_date))
                             next_date += One_day
                     else:
@@ -430,9 +430,9 @@ class AccountShares(models.Model):
                               date=next_date, shares=shares,
                               share_price=fph.close,
                               balance=shares * fph.close,
-                              pct_of_peak=fph.pct_of_peak,
+                              peak_pct_of_balance=fph.peak_pct_of_close,
                               peak_date=fph.peak_date,
-                              pct_of_trough=fph.pct_of_trough,
+                              trough_pct_of_balance=fph.trough_pct_of_close,
                               trough_date=fph.trough_date))
                         next_date += One_day
 
@@ -450,9 +450,9 @@ class AccountShares(models.Model):
                               date=next_date, shares=shares,
                               share_price=fph.close,
                               balance=shares * fph.close,
-                              pct_of_peak=fph.pct_of_peak,
+                              peak_pct_of_balance=fph.peak_pct_of_close,
                               peak_date=fph.peak_date,
-                              pct_of_trough=fph.pct_of_trough,
+                              trough_pct_of_balance=fph.trough_pct_of_close,
                               trough_date=fph.trough_date))
                         next_date += One_day
 
@@ -481,7 +481,7 @@ class AccountShares(models.Model):
                     new_rows.append(
                       cls(account_id=acct.id, fund_id='VMFXX',
                           date=next_date, shares=shares, share_price=1.0,
-                          pct_of_peak=1.0, peak_date=next_date,
+                          peak_pct_of_balance=1.0, peak_date=next_date,
                           balance=shares))
                     next_date += One_day
                 shares += a.net_amount
@@ -492,7 +492,7 @@ class AccountShares(models.Model):
                 new_rows.append(
                   cls(account_id=acct.id, fund_id='VMFXX',
                       date=next_date, shares=shares, share_price=1.0,
-                      pct_of_peak=1.0, peak_date=next_date,
+                      peak_pct_of_balance=1.0, peak_date=next_date,
                       balance=shares))
                 next_date += One_day
 

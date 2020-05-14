@@ -202,14 +202,14 @@ class FundPriceHistory(models.Model):
     trough_date = models.DateField(null=True)
 
     @property
-    def pct_of_peak(self):
-        return self.close / self.peak_close
+    def peak_pct_of_close(self):
+        return self.peak_close / self.close
 
     @property
-    def pct_of_trough(self):
+    def trough_pct_of_close(self):
         if self.trough_close is None:
             return None
-        return self.close / self.trough_close
+        return self.trough_close / self.close
 
     @classmethod
     def share_prices(cls, tickers, date):
