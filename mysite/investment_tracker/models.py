@@ -103,7 +103,7 @@ class Account(models.Model):
         for account, _ in accounts.values():
             if account.id not in trans_accts:
                 account.transaction_end_date = end_date
-                acct.save()
+                account.save()
         #AccountShares.update()
         return len(trans_accts), new_trans_funds
 
