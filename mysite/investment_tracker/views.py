@@ -124,7 +124,7 @@ def load_fund_history(request, ticker='ALL'):
     return response
 
 
-def load_transactions(request, filename, end_date):
+def load_transactions(request, end_date, filename='ofxdownload.csv'):
     r'''Loads/updates the AccountTransactionHistory table.
     
     The transactions are taken from the ofxdownload.csv file downloaded
@@ -379,9 +379,9 @@ def rebalance(request, owner_id, adj_pct=1.0, filename='ofxdownload.csv'):
     trees = [get_populated_tree_by_ofxdownload(acct, current_accts[acct.id][1])
              for acct in accts]
 
-    if adj_pct < 1.0:
-        return HttpResponse(f"adj_pct must be >= 1.0, got {adj_pct}",
-                            content_type='text/plain', status=400)
+    #if adj_pct < 1.0:
+    #    return HttpResponse(f"adj_pct must be >= 1.0, got {adj_pct}",
+    #                        content_type='text/plain', status=400)
 
     if request.method == 'GET':
         balances = {tree[0].account.id: tree[0].balance

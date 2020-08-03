@@ -5,7 +5,7 @@
 {% block body %}
 <h1 class="centered">{{acct}} Account on {{date|full_date}}
 {% if acct.rebalance_date is not none %}
-rebalanced {{acct.rebalance_date|short_date}}
+rebalanced {{acct.rebalance_date|full_date}}
 {% endif %}
 </h1>
 
@@ -41,14 +41,14 @@ rebalanced {{acct.rebalance_date|short_date}}
   {% if cat.ticker %}
     <td class="right">{{(cat.plan_balance * cat.peak_pct_of_balance)|dollars(0)}}</td>
     <td class="right">{{cat.peak_pct_of_balance|percent(0)}}</td>
-    <td class="right">{{cat.peak_date|short_date}}</td>
+    <td class="right">{{cat.peak_date|full_date}}</td>
     {% if cat.trough_pct_of_balance %}
       <td class="right">{{(cat.plan_balance * cat.trough_pct_of_balance)|dollars(0)}}</td>
     {% else %}
       <td></td>
     {% endif %}
     <td class="right">{{cat.trough_pct_of_balance|percent(0, '')}}</td>
-    <td class="right">{{cat.trough_date|short_date}}</td>
+    <td class="right">{{cat.trough_date|full_date}}</td>
   {% else %}
     <td></td>
     <td></td>

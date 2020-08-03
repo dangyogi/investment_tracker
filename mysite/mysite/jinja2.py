@@ -63,7 +63,7 @@ def short_date(value):
 def full_date(value):
     if value is None:
         return ''
-    return value.strftime("%b %d, %Y")
+    return value.strftime("%m/%d/%y")
 
 
 def url(viewname, *args, **kwargs):

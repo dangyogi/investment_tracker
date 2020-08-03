@@ -14,7 +14,7 @@
 <li>get_plan/cat_name[/account_id]</li>
 <li>get_tree/account_id</li>
 <li><a href="{{ url('help') }}">help</a></li>
-<li>load_transactions/filename/end_date</li>
+<li>load_transactions/end_date[/filename]</li>
 <li><a href={{ url('load_all_fund_history') }}">load_fund_history</a>[/ticker]</li>
 <li>rebalance/owner_id[/adj_pct[/filename]]</li>
 <li>rebalanced/owner_id</li>
@@ -41,7 +41,7 @@ To load up the data from external sources:
     attention to which number the browser appends to the filename, for
     example, "ofxdownload (2).csv".</p>
   </li>
-  <li>load_transactions/filename/end_date</li>
+  <li>load_transactions/end_date</li>
   <p>Enter the "To" date the you gave Vanguard for the download.</p>
   </ol>
 <li><a href="{{ url('load_all_fund_history') }}">load_fund_history</a></li>
