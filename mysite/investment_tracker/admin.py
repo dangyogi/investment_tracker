@@ -7,13 +7,16 @@ from .models import (
 )
 
 
-admin.site.register(User)
+@admin.register(User)
+class UserAdmin(admin.ModelAdmin):
+    list_display = ('id', 'name')
+    ordering = ('name',)
 
 
 @admin.register(Account)
 class AccountAdmin(admin.ModelAdmin):
-    list_display = ('name', 'owner')
-    ordering = ('name',)
+    list_display = ('id', 'owner', 'name')
+    ordering = ('owner', 'name',)
 
 
 @admin.register(Category)

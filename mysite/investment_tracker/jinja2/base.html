@@ -5,13 +5,13 @@
   <title>{% block title %}Title block left blank{% endblock %}</title>
 </head>
 <body>
-<div>
-<a href={{ url('index') }}>Home</a>
-<a href="{{ url('dates') }}">Dates</a>
-{# <a href={{ url('load_last_download') }}>Load Last Download</a> #}
-<a href={{ url('load_all_fund_history') }}>Update Fund History</a>
-<a href={{ url('update_shares') }}>Update Share History</a>
-<a href={{ url('help') }}>Help</a>
+<div class="links">
+<a class="link" href={{ url('index') }}>Home</a>
+<a class="link" href="{{ url('dates') }}">Dates</a>
+{# <a class="link" href={{ url('load_last_download') }}>Load Last Download</a> #}
+<a class="link" href={{ url('load_all_fund_history') }}>Update Fund History</a>
+<a class="link" href={{ url('update_shares') }}>Update Share History</a>
+<a class="link" href={{ url('help') }}>Help</a>
 {% block links %}
 {% endblock %}
 </div>

@@ -1,6 +1,23 @@
+div.links {
+    margin-bottom: 2em;
+}
+
+a.link {
+    margin-right: 1ex;
+}
+
+
 table {
     border-collapse: collapse;
     border: 3px solid black;
+}
+
+tr:nth-child(even) {
+    background: #CCC;
+}
+
+tr:nth-child(odd) {
+    background: #FFF;
 }
 
 th.left-divider, td.left-divider {
