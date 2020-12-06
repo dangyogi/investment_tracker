@@ -28,6 +28,8 @@ The overrides for the Category tree are at the parent/child link level, rather
 than directly on the Category objects.
 '''
 
+from itertools import groupby
+
 from django.db import models
 
 # Create your models here.
@@ -45,7 +47,7 @@ def field_or(field, value1, *rest_values):
     #print("field_or", field, value1, rest_values, ans)
     return ans
 
-def add_context(query, account):
+def add_context(query, account, initial_order=None):
     r'''This modifies `query` to only select rows relevant to `account`.
 
     Also sorts the most relavent first (so that, for example, you can just use
@@ -53,10 +55,15 @@ def add_context(query, account):
 
     Returns a django queryset object.
     '''
-    return query.filter(field_or('owner_id', None, account.owner_id)) \
-                .filter(field_or('account_id', None, account.id)) \
-                .order_by(models.F('account_id').asc(nulls_last=True),
-                          models.F('owner_id').asc(nulls_last=True))
+    filtered_query = \
+      query.filter(field_or('owner_id', None, account.owner_id)) \
+           .filter(field_or('account_id', None, account.id))
+    order_fields = []
+    if initial_order is not None:
+        order_fields.append(models.F(initial_order))
+    order_fields.append(models.F('account_id').asc(nulls_last=True))
+    order_fields.append(models.F('owner_id').asc(nulls_last=True))
+    return filtered_query.order_by(*order_fields)
 
 
 class Category(models.Model):
@@ -126,15 +133,21 @@ class Category(models.Model):
     def get_children(self, account):
         r'''Returns a list of this Category's children.
         '''
+        # get all applicable children (ordered by child_id)
+        children = [tuple(matches)[0]
+                    for _, matches
+                     in groupby(add_context(self.child_links, account,
+                                            'child_id')
+                                  .all(),
+                                key=lambda link: link.child_id)]
         ans = []
         last_order = -10000
-        for link in add_context(self.child_links.order_by('order'),
-                                account).all():
-            if link.order != last_order:
-                assert link.order > last_order, \
-                       "Category.child_links not ordered by `order`."
-                ans.append(link.child)
-                last_order = link.order
+        for link in sorted(children, key=lambda link: link.order):
+            #print(self.name, link.child, link.order, last_order)
+            assert link.order > last_order, \
+                   f"{self.name}.child_links not ordered by `order`."
+            ans.append(link.child)
+            last_order = link.order
         return ans
 
     def check_structure(self, path=()):

@@ -36,14 +36,21 @@ at {{adj_pct|percent(0)}} of plan.
   <td>{{ticker}}</td>
   <td class="right">{{share_price|dollars(3)}}</td>
   {% for cat in acct_cats %}
-    <td class="right">{{cat.balance|dollars(0)}}</td>
-    <td class="right">{{cat.adj_plan_balance|dollars(0)}}</td>
-    {% if cat.balance %}
-      <td class="right">{{(cat.adj_plan_balance/cat.balance - 1.0)|percent(0)}}</td>
-    {% else %}
+    {% if cat is none %}
       <td></td>
+      <td></td>
+      <td></td>
+      <td></td>
+    {% else %}
+      <td class="right">{{cat.balance|dollars(0)}}</td>
+      <td class="right">{{cat.adj_plan_balance|dollars(0)}}</td>
+      {% if abs(cat.balance) >= 1 %}
+        <td class="right">{{(cat.adj_plan_balance/cat.balance - 1.0)|percent(0)}}</td>
+      {% else %}
+        <td></td>
+      {% endif %}
+      <td class="right">{{cat.change_in_shares|roundto(0)}}</td>
     {% endif %}
-    <td class="right">{{cat.change_in_shares|roundto(0)}}</td>
   {% endfor %}
 </tr>
 {% endfor %}

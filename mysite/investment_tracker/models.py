@@ -1,15 +1,15 @@
 # models.py
 
-from datetime import datetime, date
+from datetime import datetime
 from itertools import groupby
 from operator import attrgetter
-import hashlib
 
 from django.db import models, transaction
-from django.db.models import Sum, Q
+from django.db.models import Q
 
 from .plan_models import *
 from .fund_models import *
+from .hash import hash
 
 # Create your models here.
 
@@ -34,12 +34,6 @@ class split_csv:
                 blanks = 0
                 yield line
 
-
-def hash(x):
-    ans = x
-    for fn in 'sha3_384 sha512 blake2s'.split():
-        ans = hashlib.new(fn, x.encode('utf-8')).hexdigest()
-    return ans
 
 class Account(models.Model):
     owner = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -93,19 +87,18 @@ class Account(models.Model):
         '''
         split = split_csv(file)
 
-        accounts = read_balances_csv(split.gen())
-        #accounts, new_fund_funds = \
-        #  AccountFundHistory.load_csv(split.gen(), end_date)
+        accounts, num_new_funds = read_balances_csv(split.gen())
         trans_accts, new_trans_funds = \
           AccountTransactionHistory.load_csv(split.gen(), end_date)
 
         # Update transaction_end_date for accounts with no new transactions
         for account, _ in accounts.values():
             if account.id not in trans_accts:
-                account.transaction_end_date = end_date
-                account.save()
+                fresh_account = Account.objects.get(pk=account.id)
+                fresh_account.transaction_end_date = end_date
+                fresh_account.save()
         #AccountShares.update()
-        return len(trans_accts), new_trans_funds
+        return len(trans_accts), num_new_funds + new_trans_funds
 
     class Meta:
         constraints = [
@@ -136,8 +129,8 @@ def read_balances_csv(file):
     These are taken from an ofxdownload.csv file manually downloaded from
     Vanguard.
 
-    Returns {account_id: account, {ticker: attrs}}, where attrs as the following
-    attributes:
+    Returns {account_id: account, {ticker: attrs}}, num_new_funds where attrs
+    has the following attributes:
 
       * acct: the Account object
       * fund: the Fund object
@@ -149,19 +142,31 @@ def read_balances_csv(file):
              for acct in Account.objects.all()}
     funds = {fund.ticker: fund
              for fund in Fund.objects.all()}
+    num_new_funds = 0
+    def lookup_fund(row):
+        nonlocal num_new_funds
+        ticker = row['Symbol']
+        if ticker not in funds:
+            name = row['Investment Name']
+            print("Adding Fund", ticker, name)
+            fund = Fund(ticker=ticker, name=name)
+            fund.save()
+            funds[ticker] = fund
+            num_new_funds += 1
+        return funds[ticker]
     ans = {}
     for account_number, rows \
      in groupby(sorted(csv.DictReader(file), key=itemgetter('Account Number')),
                 key=itemgetter('Account Number')):
         acct = accts[hash(account_number)]
         tickers = {row['Symbol']: attrs(acct=acct,
-                                        fund=funds[row['Symbol']],
+                                        fund=lookup_fund(row),
                                         shares=float(row['Shares']),
                                         share_price=float(row['Share Price']),
                                         balance=float(row['Total Value']))
                    for row in rows}
         ans[acct.id] = acct, tickers
-    return ans
+    return ans, num_new_funds
 
 
 class AccountTransactionHistory(models.Model):
@@ -214,10 +219,11 @@ class AccountTransactionHistory(models.Model):
 
         Returns frozenset of accounts seen, number of funds created.
         '''
+        print("AccountTransactionHistory.load_csv", end_date)
         accounts_seen = {}  # account_number: Account, start_date, prev_end_date
         funds_created = 0
         for row in csv.DictReader(file):
-            trade_date=todate(row['Trade Date'])
+            trade_date = todate(row['Trade Date'])
 
             # Get account record from accounts_seen
             account_number = row['Account Number']
@@ -290,6 +296,8 @@ class AccountTransactionHistory(models.Model):
 
         # Update transaction_start_date and transaction_end_date in Accounts.
         for acct, start_date, _ in accounts_seen.values():
+            print(acct.id, "storing start_date", start_date,
+                  "end_date", end_date)
             acct.transaction_start_date = start_date
             acct.transaction_end_date = end_date
             acct.save()
@@ -338,6 +346,12 @@ class AccountShares(models.Model):
             # Delete the entire table and rebuild it.
             cls.objects.all().delete()
 
+        # Get all money market fund tickers
+        money_markets = frozenset(
+                          f.ticker
+                          for f in Fund.objects.filter(money_market=True).all())
+        print("update: money_markets", money_markets)
+
         for acct in Account.objects.all():
             end_date = acct.transaction_end_date
 
@@ -361,6 +375,7 @@ class AccountShares(models.Model):
                     date__gte=start_date - One_week)
             except cls.DoesNotExist:
                 last_date = None
+                starting_shares = {}
                 start_date = acct.transaction_start_date
                 ath_within_dates = ath_query
                 fph_query = FundPriceHistory.objects
@@ -372,6 +387,10 @@ class AccountShares(models.Model):
                             for fph in fph_query.all()}
 
             def get_fph(ticker, date, count=0):
+                if ticker in money_markets:
+                    return attrs(close=1.0, peak_pct_of_close=1.0,
+                                 peak_date=date, trough_pct_of_close=None,
+                                 trough_date=None)
                 if (ticker, date) in fund_history:
                     return fund_history[ticker, date]
                 assert count < 5, \
@@ -513,3 +532,8 @@ class AccountShares(models.Model):
         ]
         get_latest_by = 'date'
 
+
+
+if __name__ == "__main__":
+    import sys
+    print(sys.argv[1], hash(sys.argv[1]))

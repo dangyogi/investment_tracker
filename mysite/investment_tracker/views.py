@@ -90,7 +90,8 @@ def load_fund_history(request, ticker='ALL'):
             fund = models.Fund.objects.get(pk=ticker)
             try:
                 dividend_rows, price_rows = fund.load_history()
-                print("dividend_rows", dividend_rows, "price_rows", price_rows)
+                print("dividend_rows", dividend_rows,
+                      "price_rows", price_rows)
                 message = f"{ticker}: {dividend_rows} dividends loaded, " \
                             f"{price_rows} prices loaded."
                 print("DONE:", message)
@@ -103,8 +104,6 @@ def load_fund_history(request, ticker='ALL'):
             total_dividend_rows = 0
             total_price_rows = 0
             for fund in models.Fund.objects.all():
-                if fund.ticker == 'VMFXX':
-                    continue
                 try:
                     dividend_rows, price_rows = fund.load_history()
                     print(f"{fund}: {dividend_rows} dividends loaded, "
@@ -213,6 +212,11 @@ def get_populated_tree_by_ofxdownload(acct, ticker_info):
                 row.balance = 0
 
     calc_balance(tree[0])
+
+    current_balance = sum(info.balance for info in ticker_info.values())
+    print("Account", acct.id, "tree balance", tree[0].balance,
+          "current_balance", current_balance)
+    tree[0].balance = current_balance
 
     return tree
 
@@ -374,7 +378,8 @@ def rebalance(request, owner_id, adj_pct=1.0, filename='ofxdownload.csv'):
 
     path = os.path.join(Downloads_dir, filename)
     with open(path, newline='') as file:
-        current_accts = models.read_balances_csv(models.split_csv(file).gen())
+        current_accts, _ = models.read_balances_csv(
+                             models.split_csv(file).gen())
 
     trees = [get_populated_tree_by_ofxdownload(acct, current_accts[acct.id][1])
              for acct in accts]
@@ -424,18 +429,52 @@ def rebalance(request, owner_id, adj_pct=1.0, filename='ofxdownload.csv'):
                     else:
                         cat.change_in_shares = "Ask Vanguard"
 
-    # list of (ticker, share_price, acct categories) ordered by rebalance
-    # amount (sells first, buys last) based on first account in accts.
-    ticker_rows = sorted([(cats[0].ticker, share_prices[cats[0].ticker], cats)
-                          for cats in zip(*trees)
-                           if cats[0].ticker is not None],
-                         key=lambda r:
-                               r[2][0].adj_plan_balance - r[2][0].balance)
+    # goal is list of (ticker, share_price, acct categories) ordered by
+    # rebalance amount (sells first, buys last) based on first account in accts.
+    #
+    # Step 1: convert the cats representing funds for each tree into a
+    #         {ticker: cat} map.
+    trees_by_ticker = [{cat.ticker: cat for cat in tree
+                                         if cat.ticker is not None}
+                       for tree in trees]
+    #
+    # Step 2: Add obsolete funds (funds in current_accts that are not in
+    #         trees_by_ticker).  These are set to sell everything.
+    for tree, ticker_info in zip(trees_by_ticker, (current_accts[acct.id][1]
+                                                   for acct in accts)):
+        for ticker, info in ticker_info.items():
+            if ticker not in tree:
+                tree[ticker] = models.attrs(share_price=info.share_price,
+                                            balance=info.balance,
+                                            adj_plan_balance=0,
+                                            change_in_shares=-info.shares)
+    #
+    # Step 3: Create the ticker rows for the template.  Each row is:
+    #         (ticker, share_price, cats_per_acct)
+    tickers_seen = set()
+    ticker_rows = []
+    for tree in trees_by_ticker:
+        for ticker, cat in tree.items():
+            if ticker not in tickers_seen:
+                ticker_rows.append((ticker,
+                                    cat.share_price,
+                                    [tree.get(ticker)
+                                     for tree in trees_by_ticker]))
+                tickers_seen.add(ticker)
+    #
+    # Step 4: Sort the ticker_rows by change amount (sells before buys)
+    ticker_rows.sort(key=lambda row:
+                           sum(r.adj_plan_balance - r.balance
+                               for r in row[2] if r is not None))
 
     # list of (balance, sum(balances), sum(adj_plan_balances)), one per acct
     totals = [(balances[accts[i].id],
-               sum(cats[i].balance for _, _, cats in ticker_rows),
-               sum(cats[i].adj_plan_balance for _, _, cats in ticker_rows))
+               sum(cats[i].balance
+                   for _, _, cats in ticker_rows
+                    if cats[i] is not None),
+               sum(cats[i].adj_plan_balance
+                   for _, _, cats in ticker_rows
+                    if cats[i] is not None))
               for i in range(len(accts))]
 
     print("totals", totals)

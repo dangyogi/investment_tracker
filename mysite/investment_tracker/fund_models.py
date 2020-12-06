@@ -49,12 +49,11 @@ def yahoo_url(ticker, events, start_date=None, end_date=None):
 
     This asserts that start_date <= end_date, and end_date < today.
     '''
-    if start_date:
-        period1 = yahoo_period(start_date, as_end_date=False)
-        print("start_date is", start_date, "period1 is", period1)
-    else:
-        # default to the beginning of time...
-        period1 = 0
+    if start_date is None:
+        start_date = date(1970, 1, 1)
+        print("Defaulting start_date to", start_date)
+    period1 = yahoo_period(start_date, as_end_date=False)
+    print("start_date is", start_date, "period1 is", period1)
     if end_date is None:
         # default to yesterday
         end_date = date.today() - One_day
@@ -85,6 +84,7 @@ def todate(s):
 class Fund(models.Model):
     ticker = models.CharField(max_length=10, primary_key=True)
     name = models.CharField(max_length=60, unique=True)
+    money_market = models.BooleanField(default=False)
 
     def __str__(self):
         return self.ticker
@@ -92,7 +92,7 @@ class Fund(models.Model):
     def get_price(self, date, first_date=None):
         r'''Returns the Fund's closing price on `date`.
         '''
-        if self.ticker == 'VMFXX':
+        if self.money_market:
             return 1.0
         try:
             return FundPriceHistory.objects.get(fund=self, date=date).close
@@ -121,6 +121,8 @@ class Fund(models.Model):
 
         Returns the number of rows added.
         '''
+        if self.money_market:
+            return 0
         return FundDividendHistory.load_dividends(self.ticker)
 
     def load_prices(self):
@@ -128,6 +130,8 @@ class Fund(models.Model):
 
         Returns the number of rows added.
         '''
+        if self.money_market:
+            return 0
         return FundPriceHistory.load_prices(self)
 
 
@@ -158,9 +162,9 @@ class FundDividendHistory(models.Model):
             raise Yahoo_exception(
                     f"Bad status code from yahoo for {ticker} dividends: "
                       f"{r.status_code}")
-        if r.headers['content-type'] != 'text/plain':
+        if r.headers['content-type'] != 'text/csv':
             raise Yahoo_exception(
-                    f"Expected text/plain from yahoo for {ticker} dividends, "
+                    f"Expected text/csv from yahoo for {ticker} dividends, "
                       f"got {r.headers['content-type']}")
         rows = 0
         for row in csv.DictReader(StringIO(r.text)):
@@ -271,9 +275,9 @@ class FundPriceHistory(models.Model):
             raise Yahoo_exception(
                     f"Bad status code from yahoo for {fund.ticker} prices: "
                       f"{r.status_code}")
-        if r.headers['content-type'] != 'text/plain':
+        if r.headers['content-type'] != 'text/csv':
             raise Yahoo_exception(
-                    f"Expected text/plain from yahoo for {fund.ticker} prices, "
+                    f"Expected text/csv from yahoo for {fund.ticker} prices, "
                       f"got {r.headers['content-type']}")
         rows = 0
         for row in sorted(csv.DictReader(StringIO(r.text)),
