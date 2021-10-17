@@ -26,14 +26,14 @@ class CategoryAdmin(admin.ModelAdmin):
 
 @admin.register(CategoryLink)
 class CategoryLinkAdmin(admin.ModelAdmin):
-    list_display = ('parent', 'child', 'owner', 'account', 'order')
-    ordering = ('parent__name', 'order')
+    list_display = ('parent', 'child', 'order', 'owner', 'account', 'tag')
+    ordering = ('parent__name', 'order', 'owner__name', 'account__name', 'tag')
 
 
 @admin.register(Plan)
 class PlanAdmin(admin.ModelAdmin):
-    list_display = ('category', 'owner', 'account', '__str__')
-    ordering = ('category__name', 'owner__name', 'account__name')
+    list_display = ('category', 'owner', 'account', 'tag', '__str__')
+    ordering = ('category__name', 'owner__name', 'account__name', 'tag')
 
 
 @admin.register(CategoryFund)

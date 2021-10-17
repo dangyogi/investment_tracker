@@ -55,8 +55,8 @@ class Account(models.Model):
     def __str__(self):
         return f"{self.name}: {self.owner}"
 
-    def get_tree(self):
-        return self.category.get_tree(self)
+    def get_tree(self, tags=()):
+        return self.category.get_tree(self, tags=tags)
 
     @classmethod
     def get_account_number(cls, account_number):

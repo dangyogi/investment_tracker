@@ -152,8 +152,8 @@ def dates(request):
     return render(request, 'dates.html', dict(accounts=accounts))
 
 
-def get_populated_tree_by_date(acct, date):
-    tree = acct.get_tree()
+def get_populated_tree_by_date(acct, date, tags=''):
+    tree = acct.get_tree(tags=tags)
 
     # {ticker: account_share}
     shares_by_ticker = acct.shares_on_date(date)
@@ -195,8 +195,8 @@ def calc_balance(cat):
         cat.balance = sum(calc_balance(c) for c in cat.children)
     return cat.balance
 
-def get_populated_tree_by_ofxdownload(acct, ticker_info):
-    tree = acct.get_tree()
+def get_populated_tree_by_ofxdownload(acct, ticker_info, tags=''):
+    tree = acct.get_tree(tags=tags)
 
     # Add shares to tree
     for row in tree:
@@ -274,7 +274,7 @@ def adjust_plan(us_cat, bond_cat, adj_pct):
           1.0 - (adj_dollars - us_cat.plan_balance) / bond_cat.plan_balance)
 
 
-def account(request, account_id, date):
+def account(request, account_id, date, tags=''):
     acct = models.Account.objects.get(pk=account_id)
 
     if not (acct.shares_start_date <= date <= acct.shares_end_date):
@@ -283,9 +283,10 @@ def account(request, account_id, date):
                             content_type='text/plain',
                             status=400)
 
-    print("account", acct, "date", date, "Category root", acct.category)
+    #tags = tags.split(',') if tags else ()
+    print("account", acct, "date", date, "Category root", acct.category, "tags", tags)
 
-    tree = get_populated_tree_by_date(acct, date)
+    tree = get_populated_tree_by_date(acct, date, tags=tags)
     us_cat, bond_cat = add_plans(tree)
 
     def find_min_pct(cat):
@@ -316,10 +317,12 @@ def check_structure(request):
                           "Examine http log for results.")
 
 
-def get_plan(request, cat_name, account_id=1):
+def get_plan(request, cat_name, account_id=1, tags=''):
     acct = models.Account.objects.get(pk=account_id)
     cat = models.Category.objects.get(name=cat_name)
-    return HttpResponse(str(cat.get_plan(acct)), content_type="text/plain")
+    tags = tags.split(',') if tags else ()
+    return HttpResponse(str(cat.get_plan(acct, tags=tags)),
+                        content_type="text/plain")
 
 
 def get_fund(request, cat_name, account_id=1):
@@ -328,19 +331,21 @@ def get_fund(request, cat_name, account_id=1):
     return HttpResponse(str(cat.get_fund(acct)), content_type="text/plain")
 
 
-def get_children(request, cat_name, account_id=1):
+def get_children(request, cat_name, account_id=1, tags=()):
     acct = models.Account.objects.get(pk=account_id)
     cat = models.Category.objects.get(name=cat_name)
+    tags = tags.split(',') if tags else ()
     return HttpResponse('\r\n'.join(str(child)
-                                    for child in cat.get_children(acct)),
+                                    for child in cat.get_children(acct, tags=tags)),
                         content_type="text/plain")
 
 
-def get_tree(request, account_id):
+def get_tree(request, account_id, tags=()):
     acct = models.Account.objects.get(pk=account_id)
+    tags = tags.split(',') if tags else ()
     context = dict(
         acct=acct,
-        tree=acct.get_tree(),
+        tree=acct.get_tree(tags=tags),
     )
     return render(request, 'tree.html', context)
 
@@ -372,7 +377,7 @@ def help(request):
     return render(request, 'help.html')
 
 
-def rebalance(request, owner_id, adj_pct=1.0, filename='ofxdownload.csv'):
+def rebalance(request, owner_id, adj_pct=1.0, filename='ofxdownload.csv', tags=''):
     user = models.User.objects.get(pk=owner_id)
     accts = models.Account.objects.filter(owner_id=owner_id).all()
 
@@ -381,7 +386,8 @@ def rebalance(request, owner_id, adj_pct=1.0, filename='ofxdownload.csv'):
         current_accts, _ = models.read_balances_csv(
                              models.split_csv(file).gen())
 
-    trees = [get_populated_tree_by_ofxdownload(acct, current_accts[acct.id][1])
+    #tags = tags.split(',') if tags else ()
+    trees = [get_populated_tree_by_ofxdownload(acct, current_accts[acct.id][1], tags=tags)
              for acct in accts]
 
     #if adj_pct < 1.0:

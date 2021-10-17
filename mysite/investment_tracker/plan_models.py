@@ -28,7 +28,8 @@ The overrides for the Category tree are at the parent/child link level, rather
 than directly on the Category objects.
 '''
 
-from itertools import groupby
+from itertools import groupby, chain
+from operator import attrgetter
 
 from django.db import models
 
@@ -47,7 +48,7 @@ def field_or(field, value1, *rest_values):
     #print("field_or", field, value1, rest_values, ans)
     return ans
 
-def add_context(query, account, initial_order=None):
+def add_context(query, account, initial_order=None, tags=None):
     r'''This modifies `query` to only select rows relevant to `account`.
 
     Also sorts the most relavent first (so that, for example, you can just use
@@ -58,11 +59,18 @@ def add_context(query, account, initial_order=None):
     filtered_query = \
       query.filter(field_or('owner_id', None, account.owner_id)) \
            .filter(field_or('account_id', None, account.id))
+    if tags is not None:
+        if not tags:
+            filtered_query = filtered_query.filter(tag=None)
+        else:
+            filtered_query = filtered_query.filter(field_or('tag', None, *tags))
     order_fields = []
     if initial_order is not None:
         order_fields.append(models.F(initial_order))
     order_fields.append(models.F('account_id').asc(nulls_last=True))
     order_fields.append(models.F('owner_id').asc(nulls_last=True))
+    if tags:
+        order_fields.append(models.F('tag').asc(nulls_last=True))
     return filtered_query.order_by(*order_fields)
 
 
@@ -72,7 +80,7 @@ class Category(models.Model):
     def __str__(self):
         return self.name
 
-    def get_tree(self, account, depth=0, order=1):
+    def get_tree(self, account, depth=0, order=1, tags=()):
         r'''Gets the whole Category tree for this account.
 
         Returns the tree as a list of Categories ordered from top to bottom.
@@ -104,9 +112,9 @@ class Category(models.Model):
             cat.depth = depth
             cat.order = order
             order += 1
-            cat.plan = cat.get_plan(account)
+            cat.plan = cat.get_plan(account, tags=tags)
             cat.ticker = cat.get_ticker(account)
-            cat.children = cat.get_children(account)
+            cat.children = cat.get_children(account, tags=tags)
             for child in cat.children:
                 fill_in_cat(child, depth=depth+1)
 
@@ -114,10 +122,11 @@ class Category(models.Model):
 
         return tree
 
-    def get_plan(self, account):
+    def get_plan(self, account, tags=()):
         r'''Returns the associated Plan object.
         '''
-        return add_context(Plan.objects.filter(category=self), account).first()
+        return add_context(Plan.objects.filter(category=self), account,
+                           tags=tags).first()
 
     def get_ticker(self, account):
         r'''Returns the ticker associated with this Category.
@@ -130,24 +139,28 @@ class Category(models.Model):
             return None
         return cf.fund_id
 
-    def get_children(self, account):
+    def get_children(self, account, tags=()):
         r'''Returns a list of this Category's children.
         '''
-        # get all applicable children (ordered by child_id)
-        children = [tuple(matches)[0]
+        # get all applicable children (ordered by order)
+        links = [tuple(matches)
                     for _, matches
                      in groupby(add_context(self.child_links, account,
-                                            'child_id')
+                                            'order', tags=tags)
                                   .all(),
-                                key=lambda link: link.child_id)]
+                                key=attrgetter('order'))]
         ans = []
-        last_order = -10000
-        for link in sorted(children, key=lambda link: link.order):
-            #print(self.name, link.child, link.order, last_order)
-            assert link.order > last_order, \
-                   f"{self.name}.child_links not ordered by `order`."
-            ans.append(link.child)
-            last_order = link.order
+        if links:
+            selected_tag = links[0][0].tag
+            print("get_children", "selected_tag", selected_tag)
+            for links_for_child in links:
+                link = links_for_child[0]  # select first one
+                if link.tag == selected_tag:
+                    ans.append(link.child)
+                elif link.tag is not None:
+                    raise AssertionError(
+                       f"{link.tag} to {link.child.name} not first child for {self.name}, "
+                       f"looking for {selected_tag}")
         return ans
 
     def check_structure(self, path=()):
@@ -190,6 +203,7 @@ class CategoryLink(models.Model):
                               null=True, blank=True)
     account = models.ForeignKey('Account', on_delete=models.CASCADE,
                                 null=True, blank=True)
+    tag = models.CharField(max_length=40, null=True, blank=True)
 
     class Meta:
         constraints = [
@@ -228,6 +242,7 @@ class Plan(models.Model):
                               null=True, blank=True)
     account = models.ForeignKey('Account', on_delete=models.CASCADE,
                                 null=True, blank=True)
+    tag = models.CharField(max_length=40, null=True, blank=True)
 
     def __str__(self):
         if self.amount is not None:
@@ -244,7 +259,7 @@ class Plan(models.Model):
         if self.amount is not None:
             return self.amount / starting_balance, self.amount
         if self.percent is not None:
-            return (self.percent, starting_balance * self.percent)
+            return self.percent, starting_balance * self.percent
         if self.numerator is not None:
             percent = self.numerator / self.denominator
             return percent, starting_balance * percent
