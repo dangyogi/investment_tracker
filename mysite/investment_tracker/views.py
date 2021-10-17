@@ -152,20 +152,26 @@ def dates(request):
     return render(request, 'dates.html', dict(accounts=accounts))
 
 
-def get_populated_tree_by_date(acct, date, tags=''):
+def get_populated_tree_by_date(acct, date, tags=()):
     tree = acct.get_tree(tags=tags)
+    #print("get_populated_tree_by_date: tree", tree)
 
     # {ticker: account_share}
     shares_by_ticker = acct.shares_on_date(date)
+    #print("shares_by_ticker", shares_by_ticker)
 
-    tickers = [cat.ticker for cat in tree if cat.ticker is not None]
+    tickers = [cat.ticker
+               for cat in tree
+                if cat.ticker is not None and not cat.ticker.money_market]
+    #print("tickers", tickers)
     share_prices = models.FundPriceHistory.share_prices(tickers, date)
+    #print("share_prices", share_prices)
 
     # Add shares to tree
     for row in tree:
         if row.ticker is not None:
-            if row.ticker in shares_by_ticker:
-                row.account_share = shares_by_ticker[row.ticker]
+            if row.ticker.ticker in shares_by_ticker:
+                row.account_share = shares_by_ticker[row.ticker.ticker]
                 row.shares = row.account_share.shares
                 row.share_price = row.account_share.share_price
                 row.balance = row.account_share.balance
@@ -175,10 +181,16 @@ def get_populated_tree_by_date(acct, date, tags=''):
                   row.account_share.trough_pct_of_balance
                 row.trough_date = row.account_share.trough_date
             else:
-                row.fph = share_prices[row.ticker]
+                if row.ticker.money_market:
+                    row.fph = models.FundPriceHistory(fund=row.ticker, date=date,
+                                                      close=1.0, peak_close=1.0,
+                                                      peak_date=date)
+                else:
+                    row.fph = share_prices[row.ticker.ticker]
+
                 row.shares = 0.0
-                row.share_price = row.fph.close
                 row.balance = 0.0
+                row.share_price = row.fph.close
                 row.peak_pct_of_balance = row.fph.peak_pct_of_close
                 row.peak_date = row.fph.peak_date
                 row.trough_pct_of_balance = row.fph.trough_pct_of_close
@@ -195,7 +207,7 @@ def calc_balance(cat):
         cat.balance = sum(calc_balance(c) for c in cat.children)
     return cat.balance
 
-def get_populated_tree_by_ofxdownload(acct, ticker_info, tags=''):
+def get_populated_tree_by_ofxdownload(acct, ticker_info, tags=()):
     tree = acct.get_tree(tags=tags)
 
     # Add shares to tree
@@ -283,7 +295,7 @@ def account(request, account_id, date, tags=''):
                             content_type='text/plain',
                             status=400)
 
-    #tags = tags.split(',') if tags else ()
+    tags = tags.split(',') if tags else ()
     print("account", acct, "date", date, "Category root", acct.category, "tags", tags)
 
     tree = get_populated_tree_by_date(acct, date, tags=tags)
@@ -331,7 +343,7 @@ def get_fund(request, cat_name, account_id=1):
     return HttpResponse(str(cat.get_fund(acct)), content_type="text/plain")
 
 
-def get_children(request, cat_name, account_id=1, tags=()):
+def get_children(request, cat_name, account_id=1, tags=''):
     acct = models.Account.objects.get(pk=account_id)
     cat = models.Category.objects.get(name=cat_name)
     tags = tags.split(',') if tags else ()
@@ -340,7 +352,7 @@ def get_children(request, cat_name, account_id=1, tags=()):
                         content_type="text/plain")
 
 
-def get_tree(request, account_id, tags=()):
+def get_tree(request, account_id, tags=''):
     acct = models.Account.objects.get(pk=account_id)
     tags = tags.split(',') if tags else ()
     context = dict(
@@ -395,7 +407,7 @@ def rebalance(request, owner_id, adj_pct=1.0, filename='ofxdownload.csv', tags='
         current_accts, _ = models.read_balances_csv(
                              models.split_csv(file).gen())
 
-    #tags = tags.split(',') if tags else ()
+    tags = tags.split(',') if tags else ()
     trees = [get_populated_tree_by_ofxdownload(acct, current_accts[acct.id][1], tags=tags)
              for acct in accts]
 

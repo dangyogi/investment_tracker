@@ -154,7 +154,8 @@ class Category(models.Model):
                .first()
         if cf is None:
             return None
-        return cf.fund_id
+        #return cf.fund_id
+        return cf.fund
 
     def get_children(self, account, tags=()):
         r'''Returns a list of this Category's children.
