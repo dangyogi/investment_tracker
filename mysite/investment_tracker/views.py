@@ -350,6 +350,15 @@ def get_tree(request, account_id, tags=()):
     return render(request, 'tree.html', context)
 
 
+def get_tags(request):
+    link_tags = {row.tag
+                 for row in models.CategoryLink.objects.filter(tag__isnull=False).all()}
+    plan_tags = {row.tag
+                 for row in models.Plan.objects.filter(tag__isnull=False).all()}
+    return HttpResponse('\n'.join(sorted(link_tags.union(plan_tags))),
+                        content_type="text/plain")
+
+
 def update_shares(request, reload=False):
     if request.method not in ('POST', 'GET'):
         response = HttpResponse()

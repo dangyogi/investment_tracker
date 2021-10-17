@@ -33,6 +33,15 @@ from operator import attrgetter
 
 from django.db import models
 
+
+__all__ = (
+    "Category",
+    "CategoryLink",
+    "Plan",
+    "CategoryFund",
+)
+
+
 # Create your models here.
 
 

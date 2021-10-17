@@ -252,7 +252,7 @@ class AccountTransactionHistory(models.Model):
             # But "CASH" also comes in with a blank ticker.
             # We convert the investment_name 'VANGUARD FEDERAL MONEY MARKET
             # FUND' to a 'VMFXX' ticker.  The "CASH" transactions remain NULL.
-            assert ticker != 'VMFXX', f"Got unexpected 'VMFXX' ticker!"
+            # Got hit 10/17/2021: assert ticker != 'VMFXX', f"Got unexpected 'VMFXX' ticker!"
             if not ticker:
                 if row['Investment Name'].upper() == \
                        'VANGUARD FEDERAL MONEY MARKET FUND':

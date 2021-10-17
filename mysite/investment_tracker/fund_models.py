@@ -12,6 +12,14 @@ import requests
 from django.db import models, transaction, IntegrityError
 from django.http import HttpResponse
 
+
+__all__ = (
+    "Fund",
+    "FundDividendHistory",
+    "FundPriceHistory",
+)
+
+
 # Create your models here.
 
 # These are not tied to users.
@@ -48,6 +56,8 @@ def yahoo_url(ticker, events, start_date=None, end_date=None):
     `end_date` is the last day to include in the data (defaults to yesterday).
 
     This asserts that start_date <= end_date, and end_date < today.
+
+    We don't need adjusted close data from Yahoo.
     '''
     if start_date is None:
         start_date = date(1970, 1, 1)
@@ -67,8 +77,14 @@ def yahoo_url(ticker, events, start_date=None, end_date=None):
     assert end_date < date.today(), \
            f"yahoo_url: end_date, {end_date}, must be < today"
 
-    return f"https://query1.finance.yahoo.com/v7/finance/download/{ticker}" \
-           f"?period1={period1}&period2={period2}&interval=1d&events={events}"
+    url = f"https://query1.finance.yahoo.com/v7/finance/download/{ticker}" \
+          f"?period1={period1}&period2={period2}&interval=1d&events={events}"
+    #print("yahoo_url:", url)
+    return url
+
+def get_yahoo(ticker, events, start_date=None, end_date=None):
+    url = yahoo_url(ticker, events, start_date=start_date, end_date=end_date)
+    return requests.get(url, headers={'user-agent': 'Mozilla'})
 
 
 def todate(s):
@@ -123,6 +139,7 @@ class Fund(models.Model):
         '''
         if self.money_market:
             return 0
+
         return FundDividendHistory.load_dividends(self.ticker)
 
     def load_prices(self):
@@ -152,17 +169,17 @@ class FundDividendHistory(models.Model):
         try:
             last_date = cls.objects.filter(fund_id=ticker).latest().date
             print(f"{ticker} last dividend recorded is on", last_date)
-            r = requests.get(yahoo_url(ticker, 'div', last_date + One_day))
+            r = get_yahoo(ticker, 'div', last_date + One_day)
         except FundDividendHistory.DoesNotExist:
             last_date = date(1,1,1)
             print(f"{ticker} got DoesNotExist looking for last dividend "
                     "recorded")
-            r = requests.get(yahoo_url(ticker, 'div'))
+            r = get_yahoo(ticker, 'div')
         if r.status_code != 200:
             raise Yahoo_exception(
                     f"Bad status code from yahoo for {ticker} dividends: "
                       f"{r.status_code}")
-        if r.headers['content-type'] != 'text/csv':
+        if r.headers['content-type'].split(';')[0] != 'text/csv':
             raise Yahoo_exception(
                     f"Expected text/csv from yahoo for {ticker} dividends, "
                       f"got {r.headers['content-type']}")
@@ -257,7 +274,7 @@ class FundPriceHistory(models.Model):
             peak_date = latest.peak_date
             trough_close = latest.trough_close
             trough_date = latest.trough_date
-            r = requests.get(yahoo_url(fund.ticker, 'history', start_date))
+            r = get_yahoo(fund.ticker, 'history', start_date)
         except cls.DoesNotExist:
             last_date = date(1,1,1)
             print(f"{fund.ticker} got DoesNotExist looking for last close "
@@ -266,7 +283,7 @@ class FundPriceHistory(models.Model):
             peak_date = None
             trough_close = None
             trough_date = None
-            r = requests.get(yahoo_url(fund.ticker, 'history'))
+            r = get_yahoo(fund.ticker, 'history')
         if r.status_code != 200:
             print(f"Bad status code from Yahoo {r.status_code} "
                     f"for {fund.ticker} prices, "
@@ -275,7 +292,7 @@ class FundPriceHistory(models.Model):
             raise Yahoo_exception(
                     f"Bad status code from yahoo for {fund.ticker} prices: "
                       f"{r.status_code}")
-        if r.headers['content-type'] != 'text/csv':
+        if r.headers['content-type'].split(';')[0] != 'text/csv':
             raise Yahoo_exception(
                     f"Expected text/csv from yahoo for {fund.ticker} prices, "
                       f"got {r.headers['content-type']}")

@@ -59,6 +59,7 @@ urlpatterns = [
     path('get_children/<cat_name>/<int:account_id>/tags/<tags>', views.get_children),
     path('get_tree/<int:account_id>', views.get_tree),
     path('get_tree/<int:account_id>/tags/<tags>', views.get_tree),
+    path('get_tags', views.get_tags, name='get_tags'),
     #path('update_snapshot', views.update_snapshot),
     #path('update_snapshot/<date:start_date>', views.update_snapshot),
     #path('update_snapshot/<int:reload>', views.update_snapshot),
