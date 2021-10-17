@@ -67,10 +67,18 @@ def add_context(query, account, initial_order=None, tags=None):
     order_fields = []
     if initial_order is not None:
         order_fields.append(models.F(initial_order))
-    order_fields.append(models.F('account_id').asc(nulls_last=True))
-    order_fields.append(models.F('owner_id').asc(nulls_last=True))
     if tags:
+        # Take the tag, regardless of whether a better untagged match exists for
+        # owner/account!  For multiple tagged rows, the subsequent account/owner ordering
+        # will bring the best match first for that group of tagged rows.
         order_fields.append(models.F('tag').asc(nulls_last=True))
+
+    # Account match trumps owner match.
+    order_fields.append(models.F('account_id').asc(nulls_last=True))
+
+    # And if nothing else, take the row with the owner specified.
+    order_fields.append(models.F('owner_id').asc(nulls_last=True))
+
     return filtered_query.order_by(*order_fields)
 
 
@@ -152,7 +160,7 @@ class Category(models.Model):
         ans = []
         if links:
             selected_tag = links[0][0].tag
-            print("get_children", "selected_tag", selected_tag)
+            #print("get_children", "selected_tag", selected_tag)
             for links_for_child in links:
                 link = links_for_child[0]  # select first one
                 if link.tag == selected_tag:
