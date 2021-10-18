@@ -37,8 +37,8 @@ rebalanced {{acct.rebalance_date|full_date}}
   {% endif %}
   <td class="right">{{cat.adj_plan_balance|dollars(0)}}</td>
   <td class="right">{{cat.adj_pct|percent(0)}}</td>
-  <td class="right">{{cat.ticker|blank}}</td>
-  {% if cat.ticker %}
+  <td class="right">{{(cat.fund and cat.fund.ticker)|blank}}</td>
+  {% if cat.fund %}
     <td class="right">{{(cat.plan_balance * cat.peak_pct_of_balance)|dollars(0)}}</td>
     <td class="right">{{cat.peak_pct_of_balance|percent(0)}}</td>
     <td class="right">{{cat.peak_date|full_date}}</td>

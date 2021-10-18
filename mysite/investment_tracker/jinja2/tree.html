@@ -24,7 +24,7 @@ rebalanced {{acct.rebalance_date|short_date}}
   <td>{{cat.depth}}</td>
   <td>{{cat.order}}</td>
   <td>{{str(cat.plan)}}</td>
-  <td>{{cat.ticker|blank}}</td>
+  <td>{{(cat.fund and cat.fund.ticker)|blank}}</td>
   <td>
   {% for c in cat.children %}
     {% if not loop.first %}

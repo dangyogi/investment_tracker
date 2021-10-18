@@ -45,7 +45,7 @@ urlpatterns = [
          views.load_transactions, name='load_transactions'),
     path('dates', views.dates, name='dates'),
     path('account/<int:account_id>/<date:date>', views.account, name='account'),
-    path('account/<int:account_id>/<date:date>/<tags>', views.account, name='account'),
+    path('account/<int:account_id>/<date:date>/tags/<tags>', views.account, name='account'),
     path('check_structure', views.check_structure, name='check_structure'),
     path('get_plan/<cat_name>', views.get_plan),
     path('get_plan/<cat_name>/tags/<tags>', views.get_plan),

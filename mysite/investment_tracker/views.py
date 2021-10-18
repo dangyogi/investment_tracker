@@ -160,41 +160,41 @@ def get_populated_tree_by_date(acct, date, tags=()):
     shares_by_ticker = acct.shares_on_date(date)
     #print("shares_by_ticker", shares_by_ticker)
 
-    tickers = [cat.ticker
+    tickers = [cat.fund  # FIX
                for cat in tree
-                if cat.ticker is not None and not cat.ticker.money_market]
+                if cat.fund is not None and not cat.fund.money_market]
     #print("tickers", tickers)
     share_prices = models.FundPriceHistory.share_prices(tickers, date)
     #print("share_prices", share_prices)
 
     # Add shares to tree
-    for row in tree:
-        if row.ticker is not None:
-            if row.ticker.ticker in shares_by_ticker:
-                row.account_share = shares_by_ticker[row.ticker.ticker]
-                row.shares = row.account_share.shares
-                row.share_price = row.account_share.share_price
-                row.balance = row.account_share.balance
-                row.peak_pct_of_balance = row.account_share.peak_pct_of_balance
-                row.peak_date = row.account_share.peak_date
-                row.trough_pct_of_balance = \
-                  row.account_share.trough_pct_of_balance
-                row.trough_date = row.account_share.trough_date
+    for cat in tree:
+        if cat.fund is not None:
+            if cat.fund.ticker in shares_by_ticker:
+                cat.account_share = shares_by_ticker[cat.fund.ticker]
+                cat.shares = cat.account_share.shares
+                cat.share_price = cat.account_share.share_price
+                cat.balance = cat.account_share.balance
+                cat.peak_pct_of_balance = cat.account_share.peak_pct_of_balance
+                cat.peak_date = cat.account_share.peak_date
+                cat.trough_pct_of_balance = \
+                  cat.account_share.trough_pct_of_balance
+                cat.trough_date = cat.account_share.trough_date
             else:
-                if row.ticker.money_market:
-                    row.fph = models.FundPriceHistory(fund=row.ticker, date=date,
+                if cat.fund.money_market:
+                    cat.fph = models.FundPriceHistory(fund=cat.fund, date=date,
                                                       close=1.0, peak_close=1.0,
                                                       peak_date=date)
                 else:
-                    row.fph = share_prices[row.ticker.ticker]
+                    cat.fph = share_prices[cat.fund.ticker]
 
-                row.shares = 0.0
-                row.balance = 0.0
-                row.share_price = row.fph.close
-                row.peak_pct_of_balance = row.fph.peak_pct_of_close
-                row.peak_date = row.fph.peak_date
-                row.trough_pct_of_balance = row.fph.trough_pct_of_close
-                row.trough_date = row.fph.trough_date
+                cat.shares = 0.0
+                cat.balance = 0.0
+                cat.share_price = cat.fph.close
+                cat.peak_pct_of_balance = cat.fph.peak_pct_of_close
+                cat.peak_date = cat.fph.peak_date
+                cat.trough_pct_of_balance = cat.fph.trough_pct_of_close
+                cat.trough_date = cat.fph.trough_date
 
     calc_balance(tree[0])
 
@@ -203,25 +203,26 @@ def get_populated_tree_by_date(acct, date, tags=()):
 def calc_balance(cat):
     r'''Calculate group balances.
     '''
-    if cat.ticker is None:
+    if cat.fund is None:
         cat.balance = sum(calc_balance(c) for c in cat.children)
     return cat.balance
 
 def get_populated_tree_by_ofxdownload(acct, ticker_info, tags=()):
+    # Returns [cat, ...] ordered top to bottom.
     tree = acct.get_tree(tags=tags)
 
     # Add shares to tree
-    for row in tree:
-        if row.ticker is not None:
-            if row.ticker in ticker_info:
-                attrs = ticker_info[row.ticker]
-                row.shares = attrs.shares
-                row.share_price = attrs.share_price
-                row.balance = attrs.balance
+    for cat in tree:
+        if cat.fund is not None:
+            if cat.fund.ticker in ticker_info:
+                attrs = ticker_info[cat.fund.ticker]
+                cat.shares = attrs.shares
+                cat.share_price = attrs.share_price
+                cat.balance = attrs.balance
             else:
-                row.shares = 0
-                row.share_price = 0
-                row.balance = 0
+                cat.shares = 0
+                cat.share_price = 0
+                cat.balance = 0
 
     calc_balance(tree[0])
 
@@ -238,6 +239,7 @@ def add_plans(tree):
     def calc_plan(cat, starting_bal, remaining_bal, last):
         cat.plan_pct_of_group, cat.plan_balance = \
           cat.plan.plan_balance(starting_bal, remaining_bal, last)
+        #print("cat", cat.name, "plan", cat.plan, "plan_balance", cat.plan_balance)
         cat.plan_pct_of_acct = cat.plan_balance / acct_balance
         remaining = cat.plan_balance
         for i, c in enumerate(cat.children, 1):
@@ -251,6 +253,7 @@ def add_plans(tree):
     # Find US and Bonds Categories
     for cat in tree:
         cat.adj_plan_balance = cat.plan_balance
+        #print("set adj_plan_balance in", cat.name, "to", cat.adj_plan_balance)
         cat.adj_pct = 1.0
         if cat.name == 'Bonds':
             bond_cat = cat
@@ -302,7 +305,7 @@ def account(request, account_id, date, tags=''):
     us_cat, bond_cat = add_plans(tree)
 
     def find_min_pct(cat):
-        if cat.ticker is not None:
+        if cat.fund is not None:
             if cat.plan_balance:
                 return cat.peak_pct_of_balance
             return 100
@@ -418,18 +421,19 @@ def rebalance(request, owner_id, adj_pct=1.0, filename='ofxdownload.csv', tags='
     if request.method == 'GET':
         balances = {tree[0].account.id: tree[0].balance
                     for tree in trees}
-        share_prices = {cat.ticker: cat.share_price
-                        for cat in trees[0] if cat.ticker is not None}
+        #print("balances", balances)
+        share_prices = {cat.fund.ticker: cat.share_price
+                        for cat in trees[0] if cat.fund is not None}
     else:
         if request.method != 'POST':
             return HTTPResponse("Only GET and POST methods allowed", 
                                 content_type='text/plain', status=405)
         # Get account balances
-        balances = {acct.id: float(request.POST['balance_{}'.format(acct.id)])
+        balances = {acct.id: float(request.POST[f'balance_{acct.id}'])
                     for acct in accts}
 
         # Get share_prices
-        tickers = [cat.ticker for cat in trees[0] if cat.ticker is not None]
+        tickers = [cat.fund.ticker for cat in trees[0] if cat.fund is not None]
         share_prices = {ticker: float(request.POST[ticker])
                         for ticker in tickers}
 
@@ -444,12 +448,12 @@ def rebalance(request, owner_id, adj_pct=1.0, filename='ofxdownload.csv', tags='
 
         # Calculate change_in_shares
         for cat in tree:
-            if cat.ticker is not None:
+            if cat.fund is not None:
                 change = cat.adj_plan_balance - cat.balance
                 if change == 0:
                     cat.change_in_shares = 0
                 else:
-                    cat.share_price = share_prices[cat.ticker]
+                    cat.share_price = share_prices[cat.fund.ticker]
                     if cat.share_price:
                         cat.change_in_shares = \
                           (cat.adj_plan_balance - cat.balance) / cat.share_price
@@ -461,14 +465,18 @@ def rebalance(request, owner_id, adj_pct=1.0, filename='ofxdownload.csv', tags='
     #
     # Step 1: convert the cats representing funds for each tree into a
     #         {ticker: cat} map.
-    trees_by_ticker = [{cat.ticker: cat for cat in tree
-                                         if cat.ticker is not None}
+    # [{ticker: cat}, ...]
+    trees_by_ticker = [{cat.fund.ticker: cat
+                        for cat in tree if cat.fund is not None}
                        for tree in trees]
+    print("trees_by_ticker", {ticker: cat.balance
+                              for ticker, cat in trees_by_ticker[0].items()})
+
     #
     # Step 2: Add obsolete funds (funds in current_accts that are not in
     #         trees_by_ticker).  These are set to sell everything.
-    for tree, ticker_info in zip(trees_by_ticker, (current_accts[acct.id][1]
-                                                   for acct in accts)):
+    for tree, ticker_info in zip(trees_by_ticker,
+                                 (current_accts[acct.id][1] for acct in accts)):
         for ticker, info in ticker_info.items():
             if ticker not in tree:
                 tree[ticker] = models.attrs(share_price=info.share_price,
@@ -479,7 +487,7 @@ def rebalance(request, owner_id, adj_pct=1.0, filename='ofxdownload.csv', tags='
     # Step 3: Create the ticker rows for the template.  Each row is:
     #         (ticker, share_price, cats_per_acct)
     tickers_seen = set()
-    ticker_rows = []
+    ticker_rows = []   # [(ticker, share_price, [cat, ...]), ...]
     for tree in trees_by_ticker:
         for ticker, cat in tree.items():
             if ticker not in tickers_seen:

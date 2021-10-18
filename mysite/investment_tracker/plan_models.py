@@ -113,7 +113,7 @@ class Category(models.Model):
 
           - plan
 
-          - ticker (null if none assigned)
+          - fund (null if none assigned)
 
           - children (in order)
 
@@ -130,7 +130,8 @@ class Category(models.Model):
             cat.order = order
             order += 1
             cat.plan = cat.get_plan(account, tags=tags)
-            cat.ticker = cat.get_ticker(account)
+            #print("cat", cat.name, "plan", cat.plan)
+            cat.fund = cat.get_fund(account)
             cat.children = cat.get_children(account, tags=tags)
             for child in cat.children:
                 fill_in_cat(child, depth=depth+1)
@@ -145,8 +146,8 @@ class Category(models.Model):
         return add_context(Plan.objects.filter(category=self), account,
                            tags=tags).first()
 
-    def get_ticker(self, account):
-        r'''Returns the ticker associated with this Category.
+    def get_fund(self, account):
+        r'''Returns the fund associated with this Category.
 
         Returns None if no fund is associated with this Category.
         '''
@@ -154,7 +155,6 @@ class Category(models.Model):
                .first()
         if cf is None:
             return None
-        #return cf.fund_id
         return cf.fund
 
     def get_children(self, account, tags=()):
